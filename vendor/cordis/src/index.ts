@@ -1,14 +1,14 @@
-/** Core context type and root context implementation. */
+/** Context 类型（插件共享的服务容器）与根 Context 的实现。 */
 export * from './context.ts'
-/** Event bus, dispatch modes, and event augmentation types. */
+/** 事件总线、五种事件派发模式，以及事件相关的类型补充声明。 */
 export * from './events.ts'
-/** Plugin fiber lifecycle, effects, and config validation helpers. */
+/** 插件 Fiber 的生命周期状态机、effect 托管原语，以及配置校验辅助。 */
 export * from './fiber.ts'
-/** Logger facade, logger service, message, exporter, and formatting types. */
+/** 日志门面、日志服务本体，以及日志消息、导出器、格式化相关的类型。 */
 export * from './logger.ts'
-/** Plugin registry, dependency injection, and plugin entrypoint types. */
+/** 插件注册表、依赖注入机制，以及插件入口的类型定义。 */
 export * from './registry.ts'
-/** Base service class and service lifecycle symbols. */
+/** Service 基类（所有服务的公共父类）与服务生命周期用的符号常量。 */
 export * from './service.ts'
-/** Shared internal helpers used by context, services, and plugin fibers. */
+/** 供 Context、各服务与插件 Fiber 共用的内部工具函数。 */
 export * from './utils.ts'

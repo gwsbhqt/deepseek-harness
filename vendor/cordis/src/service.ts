@@ -3,65 +3,89 @@ import { Context } from './context.ts'
 import { createCallable, joinPrototype, symbols, type Tracker } from './utils.ts'
 
 /**
- * Base class for services that expose a named API on `ctx`.
+ * 服务的基类：服务就是“在 ctx 上以固定名字暴露一组 API 的对象”。
  *
- * Subclasses call `super(ctx, name)` from their constructor. The service is
- * registered immediately and is automatically removed with the owning fiber.
+ * 子类在自己的构造函数里调用 `super(ctx, name)`，实例会立即注册进上下文。
+ * 注册由所属 fiber（插件的运行时实例）托管：fiber 卸载时服务自动注销，
+ * 子类不需要自己写任何清理代码。
  */
 export abstract class Service<out T = never> {
-  /** Symbol key of an instance method run after construction (class plugins). */
+  /** 实例方法的 Symbol 键：类插件（用 class 写法实现的插件）在构造完成后，框架会调用这个方法做后续初始化。 */
   static readonly init: unique symbol = symbols.init
-  /** Symbol key of the availability predicate passed to `ctx.provide()`. */
+  /** 传给 `ctx.provide()` 的可用性判断方法的 Symbol 键：返回 false 表示服务尚未就绪。 */
   static readonly check: unique symbol = symbols.check
-  /** Symbol key of the phantom intercept-config type parameter. */
+  /** “幽灵”类型参数的 Symbol 键：只在类型层面携带 intercept 配置的类型 T，运行时不存任何值。 */
   static readonly config: unique symbol = symbols.config
-  /** Symbol key of the call body making a service callable (e.g. `ctx.logger()`). */
+  /** 调用体方法的 Symbol 键：定义了它的服务实例本身可以像函数一样被调用（例如 `ctx.logger()`）。 */
   static readonly invoke: unique symbol = symbols.invoke
-  /** Symbol key of the helper deriving an extended service instance. */
+  /** 派生扩展实例的辅助方法的 Symbol 键：在原服务基础上叠加少量属性得到新实例。 */
   static readonly extend: unique symbol = symbols.extend
-  /** Symbol key of the tracker metadata used for context tracing. */
+  /** 追踪元数据的 Symbol 键：traceable 代理靠它识别“谁在使用这个服务”，把副作用记到真正的调用方头上。 */
   static readonly tracker: unique symbol = symbols.tracker
-  /** Symbol key of the intercept-config resolution helper below. */
+  /** 下方“合并 intercept 配置”辅助方法的 Symbol 键。 */
   static readonly resolveConfig: unique symbol = symbols.resolveConfig
 
   declare [symbols.config]: T
 
-  /** The service name this instance is registered under. */
+  /** 本实例注册进上下文时使用的服务名。 */
   public name!: string
 
   /**
-   * Register this instance as `name` in the current context.
+   * 把本实例以 `name` 注册进当前上下文。
    *
-   * Calls `ctx.reflect.provide(name, this, this[Service.check])`, so the
-   * service is unregistered automatically when the owning fiber unloads.
-   * Services with a `[Service.invoke]` body return a callable instance.
+   * 内部调用 `ctx.reflect.provide(name, this, this[Service.check])`，
+   * 注册动作记在当前 fiber 名下，fiber 卸载时服务随之自动注销。
+   * 定义了 `[Service.invoke]` 调用体的服务，返回的是一个“可调用的实例”
+   * （既能 `ctx.xxx()` 当函数调，又能访问 `ctx.xxx.yyy` 上的方法属性）。
    *
-   * @param ctx — the context to register in (stored as `this.ctx`).
-   * @param name — the service name; defaults to the static `provide` field.
+   * @param ctx — 要注册进的上下文（存为 `this.ctx`）。
+   * @param name — 服务名；缺省时取类上的静态 `provide` 字段。
    */
   constructor(protected ctx: Context, name: string) {
+    // 没传名字就退回类上的静态 provide 字段（服务类通常用 static provide 声明默认服务名）
     name ??= this.constructor['provide'] as string
 
     let self = this
+    // 追踪元数据，交给 traceable 代理做“调用方归因”：
+    // property: 'ctx' —— 别人通过代理读实例的 ctx 属性时，换成调用方自己的上下文；
+    // associate: name —— 形如 `服务名.属性` 的上下文属性也视为属于本服务。
     const tracker: Tracker = {
       associate: name,
       property: 'ctx',
     }
+    // 服务定义了调用体时，把实例包装成可调用的对象：
+    // 造一个函数，把本类原型和 Function.prototype 缝成一条原型链接给它，
+    // 于是这个函数既能直接调用，又能访问服务类上的方法
     if (self[symbols.invoke]) {
       self = createCallable(name, joinPrototype(Object.getPrototypeOf(this), Function.prototype), tracker)
     }
     self.ctx = ctx
     self.name = name
+    // 把追踪元数据挂到实例上，之后被别的插件经代理访问时才能被识别
     defineProperty(self, symbols.tracker, tracker)
 
+    // 正式注册：reflect 层会把这次登记记到当前 fiber 头上，卸载时自动撤销
     self.ctx.reflect.provide(name, self, this[symbols.check])
+    // 构造函数显式返回一个对象时，new 表达式的结果就是这个对象而非默认的 this；
+    // 可调用服务靠这一句把包装后的函数交出去
     return self
   }
 
+  /**
+   * 可见性过滤器：事件派发、服务变更通知时都会被参考，判断本服务对某个上下文是否“可见”。
+   * 隔离（isolate）机制会给子上下文一份独立的服务视图；这里比较派发方与本服务
+   * 所属上下文的隔离表里、本服务名下的条目是不是同一个——不同就说明跨了隔离
+   * 边界，本服务不应收到这个事件。
+   */
   protected [symbols.filter](ctx: Context) {
     return ctx[symbols.isolate][this.name] === this.ctx[symbols.isolate][this.name]
   }
 
+  /**
+   * 派生一个扩展实例：可调用服务先再造一个可调用对象，普通服务直接用
+   * `Object.create(this)` 以本实例为原型创建子对象，最后把 props 覆盖上去。
+   * 用途：想在原服务上加点东西，又不想污染原实例。
+   */
   protected [symbols.extend](props?: any) {
     let self: any
     if (this[Service.invoke]) {
@@ -73,19 +97,24 @@ export abstract class Service<out T = never> {
   }
 
   /**
-   * Merge intercept config from ancestors with optional base and head values.
+   * 沿上下文链合并本服务的 intercept 配置，再叠加可选的 base 与 head。
    *
-   * Entries added closer to the root apply first; `base` is prepended and
-   * `head` appended. Uses `Config.merge` when the service declares one,
-   * otherwise a shallow `Object.assign`.
+   * 每个上下文都能用 intercept 给服务追加一份配置；越靠近根的越先生效，
+   * 越靠近当前上下文的优先级越高。`base` 排在所有拦截配置之前（优先级最低），
+   * `head` 排在最后（优先级最高）。服务类上挂了带 `merge` 方法的 `Config`
+   * （通常是 schemastery 的 Schema 对象）时按它的规则合并，否则退化为
+   * 浅层的 `Object.assign`（后者整体覆盖前者的同名字段）。
    *
-   * @param base — lowest-precedence config merged before all intercepts.
-   * @param head — highest-precedence config merged after all intercepts.
-   * @returns the merged config.
+   * @param base — 最先合并、优先级最低的基础配置。
+   * @param head — 最后合并、优先级最高的覆盖配置。
+   * @returns 合并后的完整配置。
    */
   [symbols.resolveConfig](base?: T, head?: T): T {
     let intercept = this.ctx[Context.intercept]
     const configs: any[] = []
+    // 从当前上下文的 intercept 表沿原型链一路向父上下文走：
+    // 某层“自己直接声明了”本服务的配置才收集（in 判断包含原型链，hasOwn 再确认归属）；
+    // unshift 让越靠根的配置排越前，合并时子上下文的配置自然覆盖父上下文
     while (this.name in intercept) {
       if (Object.hasOwn(intercept, this.name)) {
         configs.unshift(intercept[this.name])
@@ -101,11 +130,17 @@ export abstract class Service<out T = never> {
     }
   }
 
+  /**
+   * 自定义 instanceof 的判断逻辑：沿“实例的构造函数 → 其原型的构造函数 → ……”
+   * 这条链向上找，找到本类就算 instanceof 成立。
+   * 服务实例常被 traceable 代理或可调用包装缝接过原型链，原生 instanceof 会
+   * 误判，所以这里手工爬链。
+   */
   static [Symbol.hasInstance](instance: any) {
     if (!instance) return false
     let constructor = instance.constructor
     while (constructor) {
-      // constructor may be a proxy
+      // constructor 可能是代理：取其 prototype.constructor 透出被包裹的真实构造函数
       constructor = constructor.prototype?.constructor
       if (constructor === this) return true
       constructor &&= Object.getPrototypeOf(constructor)

@@ -5,138 +5,162 @@ import { Fiber, FiberState } from './fiber.ts'
 import { DisposableList, symbols } from './utils.ts'
 
 /**
- * Return whether an event result should stop a bail-style dispatch.
+ * 判断监听器的返回值算不算"拦截成功"（bail：提前截停派发）。
  *
- * @param value — a listener's return value.
- * @returns `true` unless `value` is `null`, `false`, or `undefined`.
+ * 约定只有 `null`、`false`、`undefined` 三种值表示"不拦截，继续往下传"，
+ * 其余任何返回值都视为拦截值，会终止本次 bail 式派发并作为结果返回。
+ *
+ * @param value — 某个监听器的返回值。
+ * @returns 除 `null`/`false`/`undefined` 外一律返回 `true`。
  */
 export function isBailed(value: any) {
   return value !== null && value !== false && value !== undefined
 }
 
-/** Extract the parameter tuple from a function type. */
+/** 从函数类型里抽出参数列表（元组形式）。 */
 export type Parameters<F> = F extends (...args: infer P) => any ? P : never
-/** Extract the return type from a function type. */
+/** 从函数类型里抽出返回值类型。 */
 export type ReturnType<F> = F extends (...args: any) => infer R ? R : never
-/** Extract the explicit `this` type from a function type. */
+/** 从函数类型里抽出显式声明的 `this` 类型。 */
 export type ThisType<F> = F extends (this: infer T, ...args: any) => any ? T : never
 
 /**
- * Event dispatch strategy used by the event service.
+ * 事件服务的五种派发策略。
  *
- * `emit` runs synchronous listeners without awaiting them, `parallel` awaits
- * all listeners together, `serial` awaits them in order until one bails,
- * `bail` stops on the first synchronous bail value, and `waterfall` composes
- * listeners around a final `next` callback.
+ * `emit`：同步挨个调用监听器，不等待任何异步结果；`parallel`：并发启动
+ * 所有监听器并等它们全部落定；`serial`：按顺序逐个 await，直到有人返回
+ * 拦截值；`bail`：同步按顺序调用，遇到第一个拦截值就停；`waterfall`：
+ * 洋葱模型——监听器一层层包住最后一个 `next` 回调，调 `next()` 才继续
+ * 往里走。
  */
 export type DispatchMode = 'emit' | 'parallel' | 'serial' | 'bail' | 'waterfall'
 
+// 声明合并（declaration merging）：这里再次声明同名的 Context 接口，
+// TypeScript 会把这些成员"补"到 context.ts 的 Context 接口上——这样
+// `ctx.emit(...)`、`ctx.on(...)` 等调用才有类型提示，而真正的实现
+// 仍在本文件的 EventsService 里。
 declare module './context.ts' {
   export interface Context {
     /* eslint-disable max-len */
     /**
-     * Dispatch an event, running all listeners concurrently.
+     * 派发事件：并发运行所有监听器。
      *
-     * @param name — the event name.
-     * @param args — arguments passed to every listener.
-     * @returns a promise resolving once every listener has settled.
+     * @param name — 事件名。
+     * @param args — 原样传给每个监听器的参数。
+     * @returns 一个 promise，等全部监听器落定（无论成败）后完成。
      */
     parallel<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): Promise<void>
-    /** Same as above, with an explicit `this` for listeners (also used for filtering). */
+    /** 同上，但第一个参数显式指定监听器的 `this`（派发时也会用它做上下文过滤）。 */
     parallel<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): Promise<void>
     /**
-     * Dispatch an event synchronously, ignoring listener return values.
+     * 同步派发事件：挨个调用监听器，忽略一切返回值。
      *
-     * @param name — the event name.
-     * @param args — arguments passed to every listener.
+     * 监听器返回的 promise 不会被等待，其中的异步错误也不会在这里抛出。
+     *
+     * @param name — 事件名。
+     * @param args — 原样传给每个监听器的参数。
      */
     emit<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): void
-    /** Same as above, with an explicit `this` for listeners (also used for filtering). */
+    /** 同上，但第一个参数显式指定监听器的 `this`（派发时也会用它做上下文过滤）。 */
     emit<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): void
     /**
-     * Dispatch an event, awaiting listeners in order until one bails.
+     * 派发事件：按注册顺序逐个 await 监听器，直到有人返回拦截值。
      *
-     * @param name — the event name.
-     * @param args — arguments passed to each listener.
-     * @returns the first bail value (non-null, non-false, non-undefined), if any.
+     * @param name — 事件名。
+     * @param args — 原样传给每个监听器的参数。
+     * @returns 第一个拦截值（非 null、非 false、非 undefined）；没人拦截则为 undefined。
      */
     serial<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): Promisify<ReturnType<Events[K]>>
-    /** Same as above, with an explicit `this` for listeners (also used for filtering). */
+    /** 同上，但第一个参数显式指定监听器的 `this`（派发时也会用它做上下文过滤）。 */
     serial<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): Promisify<ReturnType<Events[K]>>
     /**
-     * Dispatch an event, calling listeners in order until one bails.
+     * 派发事件：同步按顺序调用监听器，遇到第一个拦截值立即停。
      *
-     * @param name — the event name.
-     * @param args — arguments passed to each listener.
-     * @returns the first bail value (non-null, non-false, non-undefined), if any.
+     * @param name — 事件名。
+     * @param args — 原样传给每个监听器的参数。
+     * @returns 第一个拦截值（非 null、非 false、非 undefined）；没人拦截则为 undefined。
      */
     bail<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): ReturnType<Events[K]>
-    /** Same as above, with an explicit `this` for listeners (also used for filtering). */
+    /** 同上，但第一个参数显式指定监听器的 `this`（派发时也会用它做上下文过滤）。 */
     bail<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): ReturnType<Events[K]>
     /**
-     * Dispatch an event whose last argument is a `next` continuation.
+     * 以"洋葱模型"派发事件：事件的最后一个参数是 `next` 续体
+     * （continuation，即"剩下的流程"）。
      *
-     * Each listener wraps the rest of the chain: calling `next()` invokes the
-     * next listener (finally the built-in behavior); not calling it vetoes.
+     * 每个监听器都像一层洋葱皮包住后面的链：调用 `next()` 才会触发下一个
+     * 监听器（最里层是内建默认行为）；不调 `next()` 就等于一票否决，
+     * 内层全部跳过。
      *
-     * @param name — the event name.
-     * @param args — listener arguments; the final one is the innermost `next`.
-     * @returns the outermost listener's return value.
+     * @param name — 事件名。
+     * @param args — 监听器参数，最后一个是最内层的 `next`。
+     * @returns 最外层监听器的返回值。
      */
     waterfall<K extends keyof Events>(name: K, ...args: Parameters<Events[K]>): ReturnType<Events[K]>
-    /** Same as above, with an explicit `this` for listeners (also used for filtering). */
+    /** 同上，但第一个参数显式指定监听器的 `this`（派发时也会用它做上下文过滤）。 */
     waterfall<K extends keyof Events>(thisArg: NoInfer<ThisType<Events[K]>>, name: K, ...args: Parameters<Events[K]>): ReturnType<Events[K]>
     /**
-     * Register an event listener owned by the current fiber.
+     * 注册一个事件监听器，归属当前 fiber（插件卸载时自动摘除）。
      *
-     * @param name — the event name to listen for.
-     * @param listener — called with the dispatch arguments.
-     * @param options — listener options; a boolean is shorthand for `prepend`.
-     * @returns a disposer removing the listener; `true` if it was still registered.
+     * @param name — 要监听的事件名。
+     * @param listener — 事件派发时被调用，收到派发参数。
+     * @param options — 监听选项；直接传布尔值等价于 `{ prepend }`。
+     * @returns 一个清理函数：调用它摘除监听器，返回 `true` 表示摘除前它还在册。
      */
     on<K extends keyof Events>(name: K, listener: Events[K], options?: boolean | EventOptions): () => boolean
     /**
-     * Same as `on()`, but the listener disposes itself after its first call.
+     * 同 `on()`，但监听器第一次被触发后自动摘除，最多执行一次。
      *
-     * @param name — the event name to listen for.
-     * @param listener — called at most once with the dispatch arguments.
-     * @param options — listener options; a boolean is shorthand for `prepend`.
-     * @returns a disposer removing the listener; `true` if it was still registered.
+     * @param name — 要监听的事件名。
+     * @param listener — 最多被调用一次，收到派发参数。
+     * @param options — 监听选项；直接传布尔值等价于 `{ prepend }`。
+     * @returns 一个清理函数：调用它摘除监听器，返回 `true` 表示摘除前它还在册。
      */
     once<K extends keyof Events>(name: K, listener: Events[K], options?: boolean | EventOptions): () => boolean
     /* eslint-enable max-len */
   }
 }
 
-/** Options accepted by `ctx.on()` and `ctx.once()`. */
+/** `ctx.on()` 和 `ctx.once()` 接受的选项。 */
 export interface EventOptions {
-  /** Add the listener before existing listeners for the same event. */
+  /** 把监听器插到同事件已有监听器的前面（先执行）。 */
   prepend?: boolean
-  /** Receive the event regardless of context filter checks. */
+  /** 全局监听器：无视上下文过滤器（`Context.filter`）的检查，一律收到事件。 */
   global?: boolean
 }
 
-/** Registered listener record stored by the event service. */
+/** 事件服务内部保存的一条监听器登记记录。 */
 export interface Hook extends EventOptions {
+  /** 注册该监听器的上下文；派发时按它做上下文过滤。 */
   ctx: Context
+  /** 监听器本体。 */
   callback: (...args: any[]) => any
 }
 
 /**
- * Event bus installed as `ctx.events` and mixed into every context.
+ * 事件总线：安装为 `ctx.events`，其方法同时混入每个上下文
+ * （所以能直接写 `ctx.on`、`ctx.emit` 等）。
  *
- * The service supports concurrent, synchronous, serial, bail, and waterfall
- * dispatch and automatically disposes listeners with their owning fiber.
+ * 支持 parallel / emit / serial / bail / waterfall 五种派发模式；
+ * 每个监听器都归属注册它的 fiber，fiber 卸载时监听器随之自动摘除。
  */
 export class EventsService {
   _hooks: Record<keyof any, Hook[]> = {}
 
   constructor(private ctx: Context) {
+    // 给本服务挂上 traceable 元数据（utils.ts 的归因机制会读它）：
+    // `property: 'ctx'` 声明"通过 ctx 属性拿到所属上下文"，`noShadow`
+    // 表示包装成 traceable 代理时保留影子上下文——这样按来源归因的信息
+    // （比如 logger 按来源 fiber 推导日志名）不会在代理层被抹掉。
     defineProperty(this, symbols.tracker, {
       property: 'ctx',
       noShadow: true,
     })
 
+    // 注册拦截：internal/listener 在"有人注册监听器"时触发（见 on()）。
+    // 这里把对 internal/update 的普通（非 global）注册改道——不放进全局
+    // 监听器表，而是存进该 fiber 自己的 DisposableList。好处是：配置更新
+    // 钩子跟着 fiber 走，fiber 卸载时随 DisposableList 一起自动清空。
+    // 返回值非空即表示"注册已被接管"，on() 会直接把它交还给调用方。
     this.on('internal/listener', function (this: Context, name, listener, options: EventOptions) {
       if (name === 'internal/update' && !options.global) {
         const hooks = this.fiber._hooks['internal/update'] ??= new DisposableList()
@@ -145,6 +169,10 @@ export class EventsService {
       }
     })
 
+    // 上面把钩子存进了 fiber 私有列表，这里负责把它们接回派发链：
+    // 全局 + 插前的 internal/update 监听器，把私有列表里的钩子按序排在
+    // waterfall 链的最前面，最后一个钩子调 next() 时才轮到框架内建的
+    // 更新逻辑。global 保证不受上下文过滤影响，prepend 保证最先执行。
     this.on('internal/update', function (config, noSave, next) {
       const cbs = [...this._hooks['internal/update'] || []]
       const _next = () => {
@@ -156,11 +184,16 @@ export class EventsService {
   }
 
   /**
-   * Resolve listeners for one dispatch and apply context filtering.
+   * 一次派发的"听众解析"：挑出本次该执行的监听器，并按上下文过滤。
    *
-   * @param type — the dispatch mode, reported on `internal/dispatch`.
-   * @param args — the raw dispatch arguments; consumed up to the event name.
-   * @returns the matching listener callbacks, bound to the dispatch `this`.
+   * 做法：第一个参数是对象/函数时视为显式 `this` 取出；再取出事件名；
+   * 非 internal/ 事件先广播 internal/dispatch 供诊断；最后用该 `this`
+   * 上挂的过滤器（`Context.filter`）筛掉不该收到的监听器（global
+   * 监听器豁免），把幸存回调绑定到该 `this` 后返回。
+   *
+   * @param type — 派发模式，仅用于 internal/dispatch 诊断上报。
+   * @param args — 原始派发参数；本方法会逐个 shift 消费到事件名为止。
+   * @returns 过滤后、已绑定 `this` 的监听器回调列表。
    */
   dispatch(type: string, args: any[]) {
     const thisArg = typeof args[0] === 'object' || typeof args[0] === 'function' ? args.shift() : null
@@ -175,10 +208,13 @@ export class EventsService {
   }
 
   /**
-   * Run listeners concurrently and wait for all of them.
+   * 并发启动所有监听器，并等待全部落定。
    *
-   * @param args — optional `this`, the event name, then listener arguments.
-   * @returns a promise resolving once every listener has settled.
+   * 用 Promise.allSettled 保证一个监听器失败不影响其他人执行；
+   * 全部结束后若存在失败，把所有错误聚成一个 AggregateError 抛出。
+   *
+   * @param args — 可选的 `this`、事件名，然后是监听器参数。
+   * @returns 全部监听器落定后完成的 promise。
    */
   async parallel(...args: any[]) {
     const results = await Promise.allSettled(this.dispatch('emit', args).map(async cb => cb(...args)))
@@ -187,19 +223,19 @@ export class EventsService {
   }
 
   /**
-   * Run listeners synchronously without waiting for returned promises.
+   * 同步执行所有监听器：不 await，返回值（包括 promise）直接丢弃。
    *
-   * @param args — optional `this`, the event name, then listener arguments.
+   * @param args — 可选的 `this`、事件名，然后是监听器参数。
    */
   emit(...args: any[]) {
     this.dispatch('emit', args).map(cb => cb(...args))
   }
 
   /**
-   * Run listeners in order, awaiting each, until one returns a bail value.
+   * 按顺序逐个 await 监听器，直到有人返回拦截值。
    *
-   * @param args — optional `this`, the event name, then listener arguments.
-   * @returns the first bail value (see {@link isBailed}), if any.
+   * @param args — 可选的 `this`、事件名，然后是监听器参数。
+   * @returns 第一个拦截值（判定见 {@link isBailed}）；没人拦截则为 undefined。
    */
   async serial(...args: any[]) {
     for (const cb of this.dispatch('serial', args)) {
@@ -209,10 +245,10 @@ export class EventsService {
   }
 
   /**
-   * Run listeners synchronously until one returns a bail value.
+   * serial 的同步版：不 await，按顺序调用，遇第一个拦截值立即停。
    *
-   * @param args — optional `this`, the event name, then listener arguments.
-   * @returns the first bail value (see {@link isBailed}), if any.
+   * @param args — 可选的 `this`、事件名，然后是监听器参数。
+   * @returns 第一个拦截值（判定见 {@link isBailed}）；没人拦截则为 undefined。
    */
   bail(...args: any[]) {
     for (const cb of this.dispatch('bail', args)) {
@@ -222,14 +258,16 @@ export class EventsService {
   }
 
   /**
-   * Compose listeners around the final `next` callback.
+   * 洋葱模型派发：把监听器一层层包在最后的 `next` 回调外面。
    *
-   * The last dispatch argument is treated as the innermost `next`. Listeners
-   * run outermost-first; a listener that does not call `next()` vetoes the
-   * rest of the chain, including the built-in behavior.
+   * 约定派发参数的最后一个是最内层 `next`（通常是框架内建行为）。
+   * 监听器从外到内执行，每层拿到的 `next` 指向下一层；某层不调
+   * `next()`，其内侧的全部环节（含内建行为）都被否决。实现是一个小
+   * 状态机：每调一次 next() 就从队列头取一个监听器执行，取空了才轮到
+   * 最内层 next。
    *
-   * @param args — optional `this`, the event name, listener arguments, then `next`.
-   * @returns the outermost listener's return value.
+   * @param args — 可选的 `this`、事件名、监听器参数，最后是 `next`。
+   * @returns 最外层监听器的返回值。
    */
   waterfall(...args: any[]) {
     const cbs = this.dispatch('waterfall', args)
@@ -243,13 +281,15 @@ export class EventsService {
   }
 
   /**
-   * Store a listener record as an effect on the current fiber.
+   * 把一条监听器记录登记为当前 fiber 的 effect——"监听器跟随插件
+   * 自动清理"就靠这一步：effect 体先把监听器加进列表，再交出清理
+   * 函数；fiber 卸载时框架逆序执行所有清理函数，监听器即被摘除。
    *
-   * @param label — effect label shown in fiber diagnostics.
-   * @param hooks — the listener list for one event.
-   * @param callback — the listener to store.
-   * @param options — placement and filtering options.
-   * @returns a disposer that unregisters the listener.
+   * @param label — 在 fiber 诊断信息里显示的 effect 标签。
+   * @param hooks — 该事件的监听器列表。
+   * @param callback — 要登记的监听器。
+   * @param options — 插前/插后与过滤选项。
+   * @returns 手动摘除该监听器的清理函数。
    */
   register(label: string, hooks: Hook[], callback: any, options: EventOptions): () => void {
     const method = options.prepend ? 'unshift' : 'push'
@@ -260,11 +300,11 @@ export class EventsService {
   }
 
   /**
-   * Remove a stored listener record.
+   * 从监听器列表中移除一条记录。
    *
-   * @param hooks — the listener list for one event.
-   * @param callback — the listener to remove.
-   * @returns `true` if the listener was found and removed.
+   * @param hooks — 该事件的监听器列表。
+   * @param callback — 要移除的监听器。
+   * @returns 找到并移除则返回 `true`。
    */
   unregister(hooks: Hook[], callback: any) {
     const index = hooks.findIndex(hook => hook.callback === callback)
@@ -275,22 +315,24 @@ export class EventsService {
   }
 
   /**
-   * Register an event listener owned by the current fiber.
+   * 注册一个归属当前 fiber 的事件监听器。
    *
-   * The listener is removed automatically when the fiber unloads. Throws
-   * `CordisError('INACTIVE_EFFECT')` if the fiber is already disposed.
+   * fiber 卸载时监听器自动摘除；fiber 已销毁则抛
+   * `CordisError('INACTIVE_EFFECT')`。
    *
-   * @param name — the event name to listen for.
-   * @param listener — called with the dispatch arguments.
-   * @param options — listener options; a boolean is shorthand for `prepend`.
-   * @returns a disposer removing the listener; `true` if it was still registered.
+   * @param name — 要监听的事件名。
+   * @param listener — 事件派发时被调用，收到派发参数。
+   * @param options — 监听选项；直接传布尔值等价于 `{ prepend }`。
+   * @returns 一个清理函数：调用它摘除监听器，返回 `true` 表示摘除前它还在册。
    */
   on(name: string | symbol, listener: (...args: any) => any, options?: boolean | EventOptions) {
     if (typeof options !== 'object') {
       options = { prepend: options }
     }
 
-    // handle special events
+    // 处理特殊事件：先用 bail 派发 internal/listener，给核心服务一个
+    // "接管本次注册"的机会（比如构造函数里把 internal/update 改道到
+    // fiber 私有列表）；有人接管就直接把它的返回值交还给调用方。
     this.ctx.fiber.assertActive()
     listener = this.ctx.reflect.bind(listener)
     const result = this.bail(this.ctx, 'internal/listener', name, listener, options)
@@ -302,12 +344,15 @@ export class EventsService {
   }
 
   /**
-   * Register an event listener that disposes itself after the first call.
+   * 注册一个"一次性"监听器：第一次触发后自动摘除。
    *
-   * @param name — the event name to listen for.
-   * @param listener — called at most once with the dispatch arguments.
-   * @param options — listener options; a boolean is shorthand for `prepend`.
-   * @returns a disposer removing the listener; `true` if it was still registered.
+   * 实现很取巧：包一层壳函数，壳里先调 dispose() 摘掉自己，再转发给
+   * 真正的监听器——即使真正的监听器抛错，摘除也已发生，保证"最多一次"。
+   *
+   * @param name — 要监听的事件名。
+   * @param listener — 最多被调用一次，收到派发参数。
+   * @param options — 监听选项；直接传布尔值等价于 `{ prepend }`。
+   * @returns 一个清理函数：调用它摘除监听器，返回 `true` 表示摘除前它还在册。
    */
   once(name: string, listener: (...args: any) => any, options?: boolean | EventOptions) {
     const dispose = this.on(name, function (...args: any[]) {
@@ -319,34 +364,34 @@ export class EventsService {
 }
 
 /**
- * Built-in framework events used by core services and extension points.
+ * 框架内建事件清单：供核心服务和扩展点使用；插件也可以通过声明合并
+ * 往里加自己的事件，从而获得 `ctx.on` 等调用的类型提示。
  *
- * Plugin and status events track fiber lifecycle, service events observe
- * dependency registration, update/get/set/listener events allow core services
- * to intercept runtime operations, and `internal/dispatch` exposes event-bus
- * diagnostics before public events are delivered.
+ * 大致分四类：plugin/status 跟踪 fiber 生命周期；service 观察依赖注册；
+ * update/get/set/listener 让核心服务能拦截运行时的关键操作；
+ * internal/dispatch 在事件投递前暴露总线诊断信息。
  */
 export interface Events {
-  /** A plugin fiber was created or its uid was cleared on disposal. */
+  /** 插件 fiber 被创建，或销毁时 uid 被清空，都会触发本事件。 */
   'internal/plugin'(fiber: Fiber): void
-  /** A fiber changed lifecycle state; receives the fiber and its previous state. */
+  /** fiber 的生命周期状态发生迁移；参数带上 fiber 本体和迁移前的旧状态。 */
   'internal/status'(fiber: Fiber, oldValue: FiberState): void
   /**
-   * Resolve raw plugin config after the fiber's injections become active.
-   * @param config - the raw config for this activation.
-   * @mode waterfall
+   * 在 fiber 声明的注入（inject 的依赖服务）就位之后，解析本次激活的原始插件配置。
+   * @param config - 本次激活的原始配置。
+   * @mode waterfall（洋葱模型：监听器须调 next() 才会继续）。
    */
   'internal/config'(this: Fiber, config: any, next: () => any): any
-  /** Interception hook for a service binding (no core producer). */
+  /** 服务绑定时的拦截钩子；框架核心自己不触发，纯留给扩展使用。 */
   'internal/service'(this: Context, name: string, value: any): void
-  /** Waterfall: a fiber config update is being applied; skip `next()` to veto. */
+  /** waterfall：某 fiber 的配置更新即将生效；不调 `next()` 即可否决这次更新。 */
   'internal/update'(this: Fiber, config: any, noSave: boolean, next: () => void | Promise<void>): void | Promise<void>
-  /** Waterfall: a service is being read through the context proxy. */
+  /** waterfall：正通过 context 代理读取一个服务。 */
   'internal/get'(ctx: Context, name: string, error: Error, next: () => any): any
-  /** Waterfall: a service is being written through the context proxy. */
+  /** waterfall：正通过 context 代理写入一个服务。 */
   'internal/set'(ctx: Context, name: string, value: any, error: Error, next: () => boolean): boolean
-  /** Bail: a listener is being registered; a non-null result replaces registration. */
+  /** bail：正在注册一个监听器；任何非空返回值都会取代默认注册流程（由钩子接管）。 */
   'internal/listener'(this: Context, name: string, listener: any, prepend: boolean): void
-  /** An event is being dispatched to listeners (fired for non-internal events only). */
+  /** 有事件即将派发给监听器（仅对非 internal/ 的公开事件触发，避免总线自激）。 */
   'internal/dispatch'(mode: DispatchMode, name: string, args: any[], thisArg: any): void
 }

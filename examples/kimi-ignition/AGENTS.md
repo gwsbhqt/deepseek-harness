@@ -14,11 +14,12 @@
 
 1. ✅ **第一层点火**：最小 cordis 单元（内核+loader+include+hmr）跑通 Kimi（kimi-coding 路由，k3-256k），验证配置/代码双热重载。
 2. ✅ **第二层点火**：白名单组合出完整 agent——脑（ReAct 循环）、记忆（落盘+稳定 sessionId 复活）、自我修改执行器（cordis_* 七工具）、终端入口（plugin-repl）。
-3. 🔥 **第一次自进化实弹**：让它用 cordis_define/cordis_run 自己写并挂载第一个动态插件，打通"模型写代码 → 沙箱校验 → 运行时挂载 → 当场生效"的闭环。
-4. ○ **IPython 内核插件**：持久 Python 内核 + cell 语义。关键决策：内核由 Service 持有（热重载不杀内核），超时杀 cell 不杀内核。
-5. ○ **自驱动**：挂 dsh-goal + goal-round-driver，给持续目标，不再等喂话。
-6. ○ **IM / Web 接入**：飞书/浏览器接入面进场，plugin-repl 退役。
-7. ○ **技能系统**：挂 dsh-skill + 本地 provider，之后技能自进化。
+3. ✅ **subagent 编排进场**：意群 6 五件套（dsh-subagent 服务 + spawn-in-process provider + tool-subagent/control/report 三消费面）白名单挂入；continuable 模式 = 工人是持久可续会话（独立 sessionId 落盘，可 send_message 续命）。真委派已验真：主 agent 派工人 → 工人自主调用 cordis_inspect_* → 回报 → 主 agent 转述。
+4. 🔥 **第一次自进化实弹**：让它用 cordis_define/cordis_run 自己写并挂载第一个动态插件，打通"模型写代码 → 沙箱校验 → 运行时挂载 → 当场生效"的闭环。
+5. ○ **IPython 内核插件**：持久 Python 内核 + cell 语义。关键决策：内核 daemon 化独立于宿主播进程（热重载不杀内核），超时杀 cell 不杀内核；rlm 机制不移植，rlm 手感（spawn 即回 handle、fan_out、observe）经内核桥接 ctx.subagents 复刻。
+6. ○ **自驱动**：挂 dsh-goal + goal-round-driver，给持续目标，不再等喂话。
+7. ○ **IM / Web 接入**：飞书/浏览器接入面进场，plugin-repl 退役。
+8. ○ **技能系统**：挂 dsh-skill + 本地 provider，之后技能自进化。
 
 ## 工作约定
 
@@ -29,3 +30,5 @@
 - **记忆三件套**：dsh-session（内存事件日志）→ dsh-session-persistence-jsonl（落盘 ./.sessions）→ agent-loop config 里的稳定 sessionId（复活锚点）。
 - **操控手势**：实例跑在 rmux 会话 `kimi-ignition`；`send-keys -l` 发文本（中文必须 -l）、单独发 Enter、`capture-pane -p` 读输出。
 - **effect 纪律**：插件拿外部资源（stdin/进程/定时器）必须 `ctx.effect` 返回卸载器，cordis v4 没有 dispose 事件。
+- **k3 推理重放陷阱**：k3-256k 会把重放历史里自己的 thinking 当行为范本——一旦某轮"想了要调工具但只回了文字"，后续轮次会模仿这个模式持续编造工具结果（看起来信誓旦旦，实际一个 tool_use 都没发）。发现之道：会话日志里数 `tool/call` 事件，别信模型的口头声明。规避：不让编造进历史（任务别太琐碎，琐碎任务它会判定"直接答"而跳过工具）；已污染就换新 sessionId 重开（记忆文件即历史，删之即新生）。
+- **静默 PENDING 判读**：registry 里服务插件名下的 (anon) PENDING fiber 多为可选集成在等服务（如 dsh-session 等 typert），不是错误；诊断用 plugin-diagnose.ts（脚手架，需要时在 cordis.yml 加条目热挂载）。

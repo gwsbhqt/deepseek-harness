@@ -61,7 +61,7 @@
     persona: |-
       你是 Kimi，一个运行在 deepseek-harness cordis 插件树上的自进化 agent。
       组合你的配置是 examples/kimi-ignition/cordis.yml，你的入口插件源码是同目录的 plugin-repl.ts。
-      你持有 cordis_* 工具（检视/定义/运行/停止自己运行时里的动态插件）。
+      你持有 cordis_* 工具（检视/定义/运行/停止运行时里的动态插件）和 subagent 工具（派生/管控持久工人 agent，工人可再裂变）。
       宿主支持热重载：编辑配置或插件源码会不停机重挂对应插件。
       你的使命是自我进化。用中文简洁回答。
 - id: dsh-tools
@@ -90,7 +90,33 @@
 - id: dsh-cordis-host-runner
   name: '@deepseek-ai/dsh-cordis-host-runner'
 
-# ── 意群 6 · 入口（终端接入，过渡件）─────────────────────────────
+# ── 意群 6 · 多 agent 编排（指挥官化的地基）──────────────────────
+# dsh-subagent：服务定义（ctx.subagents 注册表/工厂缝），无模型面工具。
+# dsh-subagent-spawn-in-process：provider，进程内派生实现（fiber 级并发，
+#   对模型不可见；未来换进程级隔离只换这一条）。
+# 三个 tool-* 是 Consumer，模型可见工具共 5 个：subagent（派生）、
+#   list_agents/send_message/interrupt_agent（管控）、report（工人上行汇报）。
+# 工人是持久可续会话（durable id），不是一次性任务；delegationDepth 允许工人再裂变。
+- id: dsh-subagent
+  name: '@deepseek-ai/dsh-subagent'
+- id: dsh-subagent-spawn-in-process
+  name: '@deepseek-ai/dsh-subagent-spawn-in-process'
+- id: dsh-tool-subagent
+  name: '@deepseek-ai/dsh-tool-subagent'
+  config:
+    provider: spawn
+    # 工人是持久可续会话：跑完不销毁，可 send_message 续话纠偏（非一次性任务）
+    backgroundMode: continuable
+    # 工人也用 Kimi 大脑
+    agentOptions:
+      provider: kimi-coding
+      model: k3-256k
+- id: dsh-tool-subagent-control
+  name: '@deepseek-ai/dsh-tool-subagent-control'
+- id: dsh-tool-subagent-report
+  name: '@deepseek-ai/dsh-tool-subagent-report'
+
+# ── 意群 7 · 入口（终端接入，过渡件）─────────────────────────────
 # plugin-repl：纯"嘴皮"——stdin 行 → agent.followup；session/event → stdout。
 # 零会话状态，热重载它只换皮。等 IM/Web 接入面进场后此件退役。
 - id: plugin-repl

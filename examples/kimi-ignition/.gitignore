@@ -2,3 +2,4 @@
 .sessions/
 .ipython/
 .dynplugins/
+.memo/memo.json

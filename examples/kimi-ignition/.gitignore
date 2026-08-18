@@ -1,0 +1,3 @@
+# 运行时产物：会话记忆与内核 daemon 状态不进版本库
+.sessions/
+.ipython/

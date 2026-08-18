@@ -130,7 +130,28 @@
 - id: plugin-ipython-tool
   name: ./plugin-ipython-tool.ts
 
-# ── 意群 8 · 入口（终端接入，过渡件）─────────────────────────────
+# ── 意群 8 · 自驱动（持续目标，不再等喂话）─────────────────────────
+# dsh-goal：目标域服务（ctx.goals，事件溯源状态存进会话日志——目标本身也是记忆）。
+#   defaultMaxGoalRounds 是回合预算保险丝：防止自循环失控烧钱。
+# dsh-tool-goal：模型面 get_goal/create_goal/update_goal 三件套。
+# dsh-goal-round-driver：回合驱动器——目标 active 时自动往 agent 收件箱投
+#   下一轮提示（goal_round），agent 不再等人喂话；目标 complete/block 或预算耗尽即止。
+- id: dsh-goal
+  name: '@deepseek-ai/dsh-goal'
+  config:
+    defaultMaxGoalRounds: 64
+- id: dsh-tool-goal
+  name: '@deepseek-ai/dsh-tool-goal'
+- id: dsh-goal-round-driver
+  name: '@deepseek-ai/dsh-goal-round-driver'
+# plugin-goal-keeper：重启自动补防——dsh-goal 的 activation 是进程内状态，
+# 宿主重启会把恢复出来的活动目标撤防（driver 停摆），本条把它重新武装。
+- id: plugin-goal-keeper
+  name: ./plugin-goal-keeper.ts
+  config:
+    sessionId: ignition-main
+
+# ── 意群 9 · 入口（终端接入，过渡件）─────────────────────────────
 # plugin-repl：纯"嘴皮"——stdin 行 → agent.followup；session/event → stdout。
 # 零会话状态，热重载它只换皮。等 IM/Web 接入面进场后此件退役。
 - id: plugin-repl

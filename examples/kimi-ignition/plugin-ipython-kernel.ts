@@ -34,8 +34,9 @@ export interface ExecResult {
   error: { type: string; message: string; traceback: string } | null
 }
 
-/** host 反向桥处理器：收到内核的 host.<name>(*args) 时调用，返回值原样回灌 cell。 */
-export type HostMethodHandler = (args: unknown[]) => unknown | Promise<unknown>
+/** host 反向桥处理器：收到内核的 host.<name>(*args) 时调用，返回值原样回灌 cell。
+ * @param kernel - 发起调用的内核名（约定 = 调用方 agent 的 sessionId，鉴权/路由依据）。 */
+export type HostMethodHandler = (args: unknown[], kernel: string) => unknown | Promise<unknown>
 
 export interface Config {
   /** daemon 的 unix socket 路径（相对 examples/kimi-ignition 解析）。 */
@@ -245,14 +246,14 @@ export class IPythonService extends Service {
     }
   }
 
-  private async answerHostCall(msg: { id: string; method: string; args: unknown[] }): Promise<void> {
+  private async answerHostCall(msg: { id: string; kernel?: string; method: string; args: unknown[] }): Promise<void> {
     const handler = this.hostMethods.get(msg.method)
     let reply: Record<string, unknown>
     if (!handler) {
       reply = { ok: false, error: `宿主未注册方法 "${msg.method}"` }
     } else {
       try {
-        reply = { ok: true, value: (await handler(msg.args)) ?? null }
+        reply = { ok: true, value: (await handler(msg.args, msg.kernel ?? 'unknown')) ?? null }
       } catch (e) {
         reply = { ok: false, error: (e as Error).message }
       }

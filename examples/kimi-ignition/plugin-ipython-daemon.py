@@ -22,7 +22,8 @@ daemon 自身升级靠 snapshot/restore（每变量独立序列化，不可序�
     {"id": N, "op": "restore",  "kernel": K, "path": P}       从 P 恢复变量进 K
   daemon → 客户端（应答）：{"id": N, "ok": true, ...} 或 {"id": N, "ok": false, "error": {...}}
   daemon → 客户端（反向调用，exec 期间由内核代码发起）：
-    {"kind": "host_call", "id": "hc-N", "method": M, "args": [...]}
+    {"kind": "host_call", "id": "hc-N", "kernel": K, "method": M, "args": [...]}
+    （kernel 字段让宿主方法知道"哪个会话的内核在调"，是按调用方鉴权/路由的依据）
   客户端 → daemon（反向应答）：{"kind": "host_reply", "id": "hc-N", "ok": bool, "value": ...}
 
 cell 语义（对齐 IPython 手感）：代码按语句编译执行；最后一条语句若是表达式，
@@ -61,7 +62,7 @@ class _HostProxy:
         kernel = object.__getattribute__(self, "_kernel")
 
         def call(*args):
-            return kernel.server.host_call(method, list(args))
+            return kernel.server.host_call(method, list(args), kernel.name)
 
         return call
 
@@ -183,7 +184,7 @@ class _Server:
         os.kill(os.getpid(), signal.SIGINT)
         return True
 
-    def host_call(self, method, args):
+    def host_call(self, method, args, kernel):
         """主线程（正在执行 cell）里阻塞等待宿主播进程应答反向调用。"""
         self.host_seq += 1
         call_id = f"hc-{self.host_seq}"
@@ -195,12 +196,21 @@ class _Server:
         if conn is None:
             del self.pending_host[call_id]
             raise RuntimeError("宿主未连接，host 桥不可用")
-        self._reply(conn, {"kind": "host_call", "id": call_id, "method": method, "args": args})
-        ev.wait()
+        self._reply(conn, {"kind": "host_call", "id": call_id, "kernel": kernel, "method": method, "args": args})
+        # 双保险唤醒：宿主应答，或连接断开/超时（否则执行器会被一次丢失的应答永久卡死）
+        if not ev.wait(600):
+            del self.pending_host[call_id]
+            raise RuntimeError(f"宿主方法 {method} 应答超时（600s）")
         del self.pending_host[call_id]
         if not box.get("ok"):
             raise RuntimeError(f"宿主方法 {method} 失败: {box.get('error')}")
         return box.get("value")
+
+    def _fail_all_host_calls(self, reason):
+        for ev, box in self.pending_host.values():
+            if not ev.is_set():
+                box.update({"ok": False, "error": reason})
+                ev.set()
 
     def handle(self, req):
         """快操作（读取线程内联执行）：除 exec 外的一切。exec 由读取循环投入执行队列。"""
@@ -287,6 +297,7 @@ class _Server:
                     except OSError:
                         pass
                 self.conn = conn
+            self._fail_all_host_calls("宿主连接被新连接接管")
             _log(self.logf, "client connected")
             threading.Thread(target=self._reader, args=(conn,), daemon=True).start()
 

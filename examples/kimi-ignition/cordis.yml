@@ -156,7 +156,22 @@
   config:
     sessionId: ignition-main
 
-# ── 意群 9 · 入口（终端接入，过渡件）─────────────────────────────
+# ── 意群 9 · 上下文代谢（自循环的续航）─────────────────────────────
+# 256K 窗口不是无限的：自驱动回路持续累积历史，逼近窗口就会 400 暴毙。
+# token-meter：按路由模型的窗口实测压力。compaction-basic：压力过线或收到
+#   提供方溢出错误时，自动把旧历史压成摘要节点（auto 默认 true）——
+#   摘要用被压缩会话自己的路由模型（kimi-coding/k3-256k），不额外引依赖。
+- id: token-meter
+  name: '@deepseek-ai/dsh-token-meter'
+- id: compaction-basic
+  name: '@deepseek-ai/dsh-compaction-basic'
+  config:
+    thresholdRatio: 0.75
+    retainRatio: 0.12
+    maxTokens: 8192
+    compactionRetries: 1
+
+# ── 意群 10 · 入口（终端接入，过渡件）─────────────────────────────
 # plugin-repl：纯"嘴皮"——stdin 行 → agent.followup；session/event → stdout。
 # 零会话状态，热重载它只换皮。等 IM/Web 接入面进场后此件退役。
 - id: plugin-repl

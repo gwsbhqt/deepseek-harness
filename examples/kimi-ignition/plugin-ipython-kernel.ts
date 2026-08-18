@@ -173,7 +173,13 @@ export class IPythonService extends Service {
 
   private async connectWithRetry(): Promise<Socket> {
     const sockPath = resolve(this.conf.socketPath)
-    if (!existsSync(sockPath)) this.spawnDaemon()
+    // 先试连一次：socket 文件存在不代表 daemon 活着（进程死后文件是陈尸）；
+    // 连不上才拉起新 daemon——daemon 内部 bind 前会 unlink 旧文件，接管是安全的。
+    try {
+      return await this.attach(sockPath)
+    } catch {
+      this.spawnDaemon()
+    }
     const deadline = Date.now() + this.conf.startTimeoutMs
     let lastErr: Error | undefined
     while (Date.now() < deadline) {

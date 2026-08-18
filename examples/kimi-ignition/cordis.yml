@@ -89,6 +89,11 @@
   name: '@deepseek-ai/dsh-tool-cordis'
 - id: dsh-cordis-host-runner
   name: '@deepseek-ai/dsh-cordis-host-runner'
+# plugin-dynpersist：给纯进程内的动态插件注册表补落盘——cordis_define/run 的
+# 定义与激活状态旁路记录到 .dynplugins/，宿主重启时回放（memo-1 之死的修复）。
+# 没有它，agent 的自进化成果活不过一次重启。
+- id: plugin-dynpersist
+  name: ./plugin-dynpersist.ts
 
 # ── 意群 6 · 多 agent 编排（指挥官化的地基）──────────────────────
 # dsh-subagent：服务定义（ctx.subagents 注册表/工厂缝），无模型面工具。

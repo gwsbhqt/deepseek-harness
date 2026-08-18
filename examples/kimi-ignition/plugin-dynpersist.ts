@@ -22,6 +22,8 @@ export const inject = ['dynamicCordisRunner', 'agents']
 /** 一条持久化记录：一个动态插件的源码版本史与当前激活版本。 */
 interface DynRecord {
   pluginId: string
+  /** 建档时 define 用的原始 idPrefix（回放要用它，pluginId 带 -N 后缀不合法）。 */
+  idPrefix: string
   purpose: string
   sessionId: string
   packages: Array<{ packageId: string; label: string; code: { host?: string; client?: string } }>
@@ -31,7 +33,7 @@ interface DynRecord {
 
 const DIR = './.dynplugins'
 /** cordis_define 回执文本里的身份提取（见模块 docstring 的解析约定）。 */
-const DEFINED_RE = /Defined (\S+?)\/(\S+?)\b/
+const DEFINED_RE = /Defined (\S+)\/(\S+)/
 
 function recordPath(sessionId: string, pluginId: string): string {
   const safe = (s: string) => s.replace(/[^\w.-]/g, '_')
@@ -99,6 +101,7 @@ export function apply(ctx: Context): void {
         if (args.plugin?.kind === 'new') {
           save(fileFor(sessionId, pluginId), {
             pluginId,
+            idPrefix: String(args.plugin.idPrefix ?? pluginId),
             purpose: String(args.purpose ?? ''),
             sessionId,
             packages: [{ packageId, label: String(args.name ?? ''), code: args.code }],
@@ -109,7 +112,7 @@ export function apply(ctx: Context): void {
           const file = fileFor(sessionId, pluginId)
           const rec: DynRecord = existsSync(file)
             ? load(file)
-            : { pluginId, purpose: String(args.purpose ?? ''), sessionId, packages: [], activePackage: null }
+            : { pluginId, idPrefix: pluginId, purpose: String(args.purpose ?? ''), sessionId, packages: [], activePackage: null }
           rec.packages.push({ packageId, label: String(args.name ?? ''), code: args.code })
           save(file, rec)
         }
@@ -131,21 +134,34 @@ export function apply(ctx: Context): void {
 
 
   // ── 启动重放：define 激活版本 + run；回放后记录归一到新身份 ──
-  for (const f of readdirSync(resolve(DIR))) {
+  const files = readdirSync(resolve(DIR))
+  ctx.logger.info(`dynpersist: 重放扫描 ${files.length} 个文件`)
+  for (const f of files) {
     if (!f.endsWith('.json')) continue
     const file = join(resolve(DIR), f)
     try {
       const rec: DynRecord = load(file)
-      if (rec.activePackage === null) continue
+      if (rec.activePackage === null) {
+        ctx.logger.info(`dynpersist: ${f} 已停止，跳过`)
+        continue
+      }
       const pkg = rec.packages.find((p) => p.packageId === rec.activePackage) ?? rec.packages.at(-1)!
       const agent = ctx.agents.get(rec.sessionId as SessionId)
       if (!agent) {
         ctx.logger.warn(`dynpersist: ${rec.pluginId} 的属主会话 ${rec.sessionId} 未存活，跳过回放`)
         continue
       }
+      // 幂等：回放可能因 hmr 重挂本插件而重复执行；目标插件已在运行时里就跳过，
+      // 否则重复回放会在动态插件 ctx.provide 时撞服务重名（memoPad 冲突的教训）。
+      const existing = runner.snapshot(agent) as any[]
+      const already = existing.some((p) => p.pluginId === rec.pluginId)
+      if (already) {
+        ctx.logger.info(`dynpersist: ${rec.pluginId} 已在运行时，跳过回放`)
+        continue
+      }
       const receipt = runner.define({
         sessionId: rec.sessionId,
-        plugin: { kind: 'new', idPrefix: rec.pluginId },
+        plugin: { kind: 'new', idPrefix: rec.idPrefix },
         name: pkg.label,
         purpose: rec.purpose,
         code: pkg.code,
@@ -153,6 +169,7 @@ export function apply(ctx: Context): void {
       runner.run(agent, receipt.pluginId, receipt.packageId, 'run')
       save(file, {
         pluginId: receipt.pluginId,
+        idPrefix: rec.idPrefix,
         purpose: rec.purpose,
         sessionId: rec.sessionId,
         packages: [{ packageId: receipt.packageId, label: receipt.name, code: pkg.code }],
@@ -160,7 +177,14 @@ export function apply(ctx: Context): void {
       })
       ctx.logger.info(`dynpersist: 回放动态插件 ${receipt.pluginId}/${receipt.name}`)
     } catch (e) {
-      ctx.logger.warn(`dynpersist: 回放 ${f} 失败（跳过）: ${(e as Error).message}`)
+      ctx.logger.warn(`dynpersist: 回放 ${f} 失败: ${(e as Error).message}`)
+      // 回放失败的记录退休（activePackage=null）：多半是运行时已有等价物
+      // （agent 自愈重建的兄弟），留着只会让每次重启都撞同一个冲突。
+      try {
+        const rec = load(file)
+        rec.activePackage = null
+        save(file, rec)
+      } catch { /* 记录损坏时退休也免了 */ }
     }
   }
 }

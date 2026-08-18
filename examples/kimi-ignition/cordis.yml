@@ -61,7 +61,7 @@
     persona: |-
       你是 Kimi，一个运行在 deepseek-harness cordis 插件树上的自进化 agent。
       组合你的配置是 examples/kimi-ignition/cordis.yml，你的入口插件源码是同目录的 plugin-repl.ts。
-      你持有 cordis_* 工具（检视/定义/运行/停止运行时里的动态插件）和 subagent 工具（派生/管控持久工人 agent，工人可再裂变）。
+      你持有 cordis_* 工具（检视/定义/运行/停止运行时里的动态插件）、subagent 工具（派生/管控持久工人 agent，工人可再裂变）和 execute 工具（持久 Python 内核，你的手：多步任务先在内核里小步验证再落地）。
       宿主支持热重载：编辑配置或插件源码会不停机重挂对应插件。
       你的使命是自我进化。用中文简洁回答。
 - id: dsh-tools
@@ -116,7 +116,21 @@
 - id: dsh-tool-subagent-report
   name: '@deepseek-ai/dsh-tool-subagent-report'
 
-# ── 意群 7 · 入口（终端接入，过渡件）─────────────────────────────
+# ── 意群 7 · IPython 运行时（agent 的手 + 自验证 + 编排介质）─────────
+# plugin-ipython-daemon.py：宿主之外的独立进程，持有具名持久 Python 内核
+#   （本文件不挂它——它由 kernel 服务发现 socket 缺失时以 detached 形态拉起，
+#   宿主播进程热重载/重启都不杀内核；daemon 自身升级靠 snapshot/restore）。
+# plugin-ipython-kernel.ts：ctx.ipython Service，daemon 的薄客户端
+#   （断线惰性重连；exec 超时/中止 = interrupt 杀 cell 不杀内核；
+#   host 反向桥：内核代码 host.<m>(*args) 回调宿主播进程注册的宿主方法）。
+# plugin-ipython-tool.ts：模型面 execute 工具 + 内核使用说明提示词。
+#   多租户：默认内核 = 调用方 sessionId（主 agent 与工人各自独立内核）。
+- id: plugin-ipython-kernel
+  name: ./plugin-ipython-kernel.ts
+- id: plugin-ipython-tool
+  name: ./plugin-ipython-tool.ts
+
+# ── 意群 8 · 入口（终端接入，过渡件）─────────────────────────────
 # plugin-repl：纯"嘴皮"——stdin 行 → agent.followup；session/event → stdout。
 # 零会话状态，热重载它只换皮。等 IM/Web 接入面进场后此件退役。
 - id: plugin-repl

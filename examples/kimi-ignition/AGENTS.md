@@ -15,8 +15,8 @@
 1. ✅ **第一层点火**：最小 cordis 单元（内核+loader+include+hmr）跑通 Kimi（kimi-coding 路由，k3-256k），验证配置/代码双热重载。
 2. ✅ **第二层点火**：白名单组合出完整 agent——脑（ReAct 循环）、记忆（落盘+稳定 sessionId 复活）、自我修改执行器（cordis_* 七工具）、终端入口（plugin-repl）。
 3. ✅ **subagent 编排进场**：意群 6 五件套（dsh-subagent 服务 + spawn-in-process provider + tool-subagent/control/report 三消费面）白名单挂入；continuable 模式 = 工人是持久可续会话（独立 sessionId 落盘，可 send_message 续命）。真委派已验真：主 agent 派工人 → 工人自主调用 cordis_inspect_* → 回报 → 主 agent 转述。
-4. 🔥 **第一次自进化实弹**：让它用 cordis_define/cordis_run 自己写并挂载第一个动态插件，打通"模型写代码 → 沙箱校验 → 运行时挂载 → 当场生效"的闭环。
-5. ○ **IPython 内核插件**：持久 Python 内核 + cell 语义。关键决策：内核 daemon 化独立于宿主播进程（热重载不杀内核），超时杀 cell 不杀内核；rlm 机制不移植，rlm 手感（spawn 即回 handle、fan_out、observe）经内核桥接 ctx.subagents 复刻。
+4. ✅ **IPython 内核三件套**：`plugin-ipython-daemon.py`（宿主外独立进程，具名持久内核；主线程=全局执行器，SIGINT 杀 cell 不杀内核——SetAsyncExc 打不断 C 层阻塞，故选信号方案）+ `plugin-ipython-kernel.ts`（ctx.ipython Service，薄客户端，断线惰性重连，卸载只断开不杀 daemon）+ `plugin-ipython-tool.ts`（execute 工具，默认内核=调用方 sessionId 多租户隔离）。host 反向桥已通（内核 host.echo → 宿主方法注册表）。验真：变量跨调用常驻、热重载内核服务后 big 变量仍在、工人与主 agent 内核互不可见。
+5. 🔥 **第一次自进化实弹**：让它用 cordis_define/cordis_run 自己写并挂载第一个动态插件，打通"模型写代码 → 沙箱校验 → 运行时挂载 → 当场生效"的闭环。
 6. ○ **自驱动**：挂 dsh-goal + goal-round-driver，给持续目标，不再等喂话。
 7. ○ **IM / Web 接入**：飞书/浏览器接入面进场，plugin-repl 退役。
 8. ○ **技能系统**：挂 dsh-skill + 本地 provider，之后技能自进化。

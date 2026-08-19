@@ -17,7 +17,7 @@
 - 活不过或不保证：memoPad 的进程内 Map 本身（靠启动时从 `.memo/memo.json` restore）、goal 的进程内 activation（靠 goal-keeper 重新武装）、动态插件的当前 fiber/副作用（stop/update/undefine 必须能清掉）、Host→Python 的持久化写入在同一 `execute` cell 内可能尚未 settle。
 
 ## 4. 自检方式
-用 `execute` 跑一条：`smoke()`（若内核变量丢失则 `exec(Path('.memo/smoke.py').read_text(encoding='utf-8'))` 后再跑）。它返回四项红绿灯：`memo` 验证 live recall 且 `.memo/memo.json` 有历史哨兵；`host_bridge` 验证 `host.self_status()` ok 且 `host.prompt_proof()` included；`execute` 验证内核算术和 `.memo/smoke.execute` 读写；`inspect` 验证 `.dynplugins/` 含 `self-* / prule-* / pyb-*` 记录。总灯 `all=green` 才算过；历史经验是 memo 持久化异步，不能用同一个 cell 里刚写的 key 立刻断言落盘。
+用 `execute` 跑一条：`smoke()`；它已晋升为标准技能 `skills/smoke.py`，新内核会自动装载，异常缺载时先 `reload_skills()` 并查 `_skill_errors`（旧 `.memo/smoke.py` 仅历史留存）。它返回四项红绿灯：`memo` 验证 live recall 且 `.memo/memo.json` 有历史哨兵；`host_bridge` 验证 `host.self_status()` ok 且 `host.prompt_proof()` included；`execute` 验证内核算术和 `.memo/smoke.execute` 读写；`inspect` 验证 `.dynplugins/` 含 `self-* / prule-* / pyb-*` 记录。总灯 `all=green` 才算过；历史经验是 memo 持久化异步，不能用同一个 cell 里刚写的 key 立刻断言落盘。
 
 ## 5. 踩过的坑（每条一句教训）
 - 动态模型工具必须用 `harness.defineTool` 且带 `output:{schema,render}`：裸对象/封闭 parameters/缺 output 都被拒，先照 `plugin-ipython-tool.ts` 抄形状。

@@ -8,7 +8,7 @@
  * 渲染契约：四类内容一眼可分——
  *   用户输入：亮青底/青色 + "你 ›"
  *   助手正文：绿色 + "kimi ›"
- *   工具调用：黄色 + "▸ 调用 <工具名>"，入参默认 3 行预览，超长以 "… (共 N 行)" 收尾
+ *   工具调用：黄色 + "▸ 调用 <工具名>"，入参默认 3 行预览，超长以 "…(共N行)" 收尾
  *   工具结果：暗灰 + "◂ 结果 <工具名>"，出参同样折叠；isError 用红色
  */
 import type { Context } from '@deepseek-ai/cordis'
@@ -24,7 +24,6 @@ export interface Config {
   sessionId: string
 }
 
-const MAX_PAYLOAD_CHARS = 2400
 const PREVIEW_LINES = 3
 const useColor = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR
 const C = {
@@ -45,31 +44,24 @@ function paint(color: keyof typeof C, text: string): string {
   return useColor ? `${C[color]}${text}${C.reset}` : text
 }
 
-function ellipsize(text: string, max = MAX_PAYLOAD_CHARS): string {
-  if (text.length <= max) return text
-  const head = text.slice(0, Math.floor(max * 0.7))
-  const tail = text.slice(-Math.floor(max * 0.2))
-  return `${head}\n… [截断 ${text.length - head.length - tail.length} 字符] …\n${tail}`
-}
-
 function prettyMaybeJson(raw: string): string {
   const text = String(raw ?? '')
   const trimmed = text.trim()
   if (!trimmed) return '(empty)'
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
     try {
-      return ellipsize(JSON.stringify(JSON.parse(trimmed), null, 2))
+      return JSON.stringify(JSON.parse(trimmed), null, 2)
     } catch {
-      return ellipsize(text)
+      return text
     }
   }
-  return ellipsize(text)
+  return text
 }
 
 function collapseLines(text: string, max = PREVIEW_LINES): string {
   const lines = text.split('\n')
   if (lines.length <= max) return text
-  return `${lines.slice(0, max).join('\n')}\n… (共 ${lines.length} 行)`
+  return `${lines.slice(0, max).join('\n')}\n…(共${lines.length}行)`
 }
 
 function previewPayload(raw: string): string {
@@ -77,7 +69,7 @@ function previewPayload(raw: string): string {
 }
 
 function indent(text: string, prefix: string): string {
-  return text.split('\n').map((line) => `${prefix}${line}`).join('\n')
+  return text.split('\n').map(line => `${prefix}${line}`).join('\n')
 }
 
 function blockText(blocks: readonly unknown[]): string {

@@ -28,6 +28,8 @@ daemon 自身升级靠 snapshot/restore（每变量独立序列化，不可序�
 
 cell 语义（对齐 IPython 手感）：代码按语句编译执行；最后一条语句若是表达式，
 其值的 repr 作为 result 返回并绑定到变量 _。stdout/stderr 全量捕获返回。
+技能机制：内核创建/reset 时自动把技能目录（默认 <socket目录>/skills）下所有
+.py exec 进命名空间；reload_skills() 热加载；失败收 _skill_errors 不杀内核。
 单客户端假设：任一时刻只服务一条 socket 连接，重连即接管。
 """
 import base64
@@ -75,6 +77,27 @@ class _Kernel:
         self.server = server
         self.namespace = {"__name__": "__main__", "_": None}
         self.namespace["host"] = _HostProxy(self)
+        self.namespace["reload_skills"] = self.load_skills
+        self.load_skills()
+
+    def load_skills(self):
+        """把技能目录里所有 .py 依次 exec 进命名空间（定义即工具）。
+        失败的技能不杀内核，错误收进 _skill_errors 字典供检视。"""
+        errors = {}
+        skills_dir = self.server.skills_dir
+        if os.path.isdir(skills_dir):
+            for fname in sorted(os.listdir(skills_dir)):
+                if not fname.endswith(".py"):
+                    continue
+                path = os.path.join(skills_dir, fname)
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        code = f.read()
+                    exec(compile(code, path, "exec"), self.namespace)
+                except BaseException:
+                    errors[fname] = traceback.format_exc().strip().splitlines()[-1]
+        self.namespace["_skill_errors"] = errors
+        return dict(errors)
 
     def exec_cell(self, code):
         """执行一个 cell。cell 末尾的孤立表达式的值 = result（并绑定 _）。
@@ -108,6 +131,8 @@ class _Kernel:
     def reset(self):
         self.namespace.clear()
         self.namespace.update({"__name__": "__main__", "_": None, "host": _HostProxy(self)})
+        self.namespace["reload_skills"] = self.load_skills
+        self.load_skills()
 
     def snapshot(self, path):
         """逐变量序列化落盘；不可序列化的点名跳过并报告（不炸整单）。"""
@@ -137,8 +162,9 @@ class _Kernel:
 
 
 class _Server:
-    def __init__(self, sock_path, log_path):
+    def __init__(self, sock_path, log_path, skills_dir):
         self.sock_path = sock_path
+        self.skills_dir = skills_dir
         self.kernels = {}
         self.exec_queue = queue.Queue()  # 主线程执行器的任务队列
         self.current_kernel = None  # 主线程正在为谁执行（interrupt 的靶标核对）
@@ -306,7 +332,10 @@ def main():
     # SIGINT 不屏蔽：它是 interrupt 操作的载体，在主线程点火成 KeyboardInterrupt 杀 cell。
     # daemon 本体终止走 SIGTERM（宿主不依赖终端 Ctrl-C——daemon 脱离终端运行）。
     sock_path, log_path = sys.argv[1], sys.argv[2]
-    server = _Server(sock_path, log_path)
+    # 技能目录（可选 argv[3]，默认 socket 旁的 ./skills）：每个新内核创建时
+    # 把目录下所有 .py 依次 exec 进命名空间——agent 给自己造的工具由此常住。
+    skills_dir = sys.argv[3] if len(sys.argv) > 3 else os.path.join(os.path.dirname(sock_path), "skills")
+    server = _Server(sock_path, log_path, skills_dir)
     threading.Thread(target=server.serve, daemon=True).start()
     server.executor_loop()
 

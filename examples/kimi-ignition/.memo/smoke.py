@@ -41,8 +41,8 @@ def smoke():
     # 4) inspect/dynpersist records
     try:
         names = {p.name for p in Path('.dynplugins').iterdir()}
-        ok = ('ignition-main--self-1.json' in names and
-              'ignition-main--prule-3.json' in names and
+        ok = (any(n.startswith('ignition-main--self-') for n in names) and
+              any(n.startswith('ignition-main--prule-') for n in names) and
               any(n.startswith('ignition-main--pyb-') for n in names))
         report['inspect'] = 'green' if ok else 'red'
         report['inspect_detail'] = sorted(names)

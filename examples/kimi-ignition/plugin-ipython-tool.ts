@@ -24,6 +24,9 @@ const IPYTHON_PROMPT = `你可以用 execute 工具在一个持久 Python 内核
 - 报错不是失败：异常以 error 字段返回，修改变量重试即可，内核状态仍在。
 - 长任务会被超时打断：杀的是当前 cell，内核与已有变量存活，换个思路继续。
 - 复杂的活先在内核里小步验证（自验证），确认可行再落到正式动作。
+- 给自己造 Python 工具：把可复用逻辑写成 skills/<名字>.py（execute 能写文件，目录相对宿主 cwd=examples/kimi-ignition）。
+  新内核启动会自动装载目录下所有 .py；当前内核用 reload_skills() 热加载；装载失败收在 _skill_errors 不杀内核。
+  纪律：一个文件一个用途、函数带 docstring、写完立刻调一次验证、再记进 memo。
 - 内核里的 host 对象能反向调用宿主能力（host.<方法>(*args)）：
   host.subagent_spawn(description, prompt) 派一个持久工人（返回工人 id）；
   host.subagent_list() 列你的工人；host.subagent_send(id, message) 给工人续话派活。

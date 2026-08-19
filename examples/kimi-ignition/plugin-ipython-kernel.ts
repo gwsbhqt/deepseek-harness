@@ -51,6 +51,8 @@ export interface Config {
   startTimeoutMs: number
   /** exec 的默认超时毫秒数（超时=向 daemon 发 interrupt，杀 cell 不杀内核）。 */
   execDefaultTimeoutMs: number
+  /** Python 技能目录：daemon 把它下所有 .py 自动装进每个内核（agent 自造工具的家）。 */
+  skillsPath: string
 }
 
 export class IPythonService extends Service {
@@ -61,6 +63,7 @@ export class IPythonService extends Service {
     pythonBin: z.string().default('python3'),
     startTimeoutMs: z.number().min(100).default(5000),
     execDefaultTimeoutMs: z.number().min(1000).default(120_000),
+    skillsPath: z.string().default('./skills'),
   })
 
   private readonly conf: Config
@@ -195,7 +198,7 @@ export class IPythonService extends Service {
 
   /** detached 拉起 daemon：不随宿主播进程退出，宿主重启后重新 attach 同一个 daemon。 */
   private spawnDaemon(): void {
-    const child = spawn(this.conf.pythonBin, [resolve(this.conf.daemonPath), resolve(this.conf.socketPath), resolve(this.conf.logPath)], {
+    const child = spawn(this.conf.pythonBin, [resolve(this.conf.daemonPath), resolve(this.conf.socketPath), resolve(this.conf.logPath), resolve(this.conf.skillsPath)], {
       detached: true,
       stdio: 'ignore',
     })

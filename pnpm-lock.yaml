@@ -497,15 +497,6 @@ importers:
       '@deepseek-ai/dsh-client-ui-settings':
         specifier: workspace:*
         version: link:../packages/client/ui-settings
-      '@deepseek-ai/dsh-client-ui-settings-general':
-        specifier: workspace:*
-        version: link:../packages/client/ui-settings-general
-      '@deepseek-ai/dsh-client-ui-settings-plugin-inventory':
-        specifier: workspace:*
-        version: link:../packages/client/ui-settings-plugin-inventory
-      '@deepseek-ai/dsh-client-ui-settings-plugins':
-        specifier: workspace:*
-        version: link:../packages/client/ui-settings-plugins
       '@deepseek-ai/dsh-client-ui-sidebar':
         specifier: workspace:*
         version: link:../packages/client/ui-sidebar
@@ -515,6 +506,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-tool':
         specifier: workspace:*
         version: link:../packages/client/ui-tool
+      '@deepseek-ai/dsh-client-ui-trajectory':
+        specifier: workspace:*
+        version: link:../packages/client/ui-trajectory
       '@deepseek-ai/dsh-client-ui-workspace':
         specifier: workspace:*
         version: link:../packages/client/ui-workspace
@@ -587,9 +581,6 @@ importers:
       '@deepseek-ai/dsh-host-directory-picker-native':
         specifier: workspace:*
         version: link:../packages/host/directory-picker-native
-      '@deepseek-ai/dsh-host-plugin-inventory':
-        specifier: workspace:*
-        version: link:../packages/host/plugin-inventory
       '@deepseek-ai/dsh-host-webserver':
         specifier: workspace:*
         version: link:../packages/host/webserver

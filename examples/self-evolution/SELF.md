@@ -6,8 +6,8 @@
 ## 2. 能力清单
 - 动态插件手术刀：模型工具 `cordis_inspect_list/cordis_inspect_query/cordis_inspect_self` 看能力/状态，`cordis_define/cordis_run` 挂载或更新，`cordis_stop/cordis_undefine` 回收。
 - 持久 Python 手：模型工具 `ipython(code, kernel?)`；默认内核按 sessionId 隔离，主 agent 是 `self-evolution-main`，可用内核变量如 `smoke`；内核里 `host.<method>(*args)` 反向调用宿主。
-- Web 入口：`dse` 启动或复用 rmux 会话 `self-evolution`，3081 上的对话、Cordis 动态插件面板和 Loader 插件清单都直接访问 `self-evolution-main`；通用 `ds`/3080 保持独立。
-- REPL 回退：`plugin-repl.ts` 热重载只换渲染不断会话；四类内容用颜色+前缀区分（你 › / 自进化 › / ▸ 调用 / ◂ 结果），工具入参出参按行折叠：默认最多 3 行预览，超出行收起，末尾 `…(共N行)`。
+- Web 入口：`dse` 启动或复用 rmux 会话 `self-evolution`，3081 上的对话、轨迹和 Cordis 动态插件面板都直接访问 `self-evolution-main`；通用设置和 Loader 插件清单不加载，`ds`/3080 保持独立。
+- REPL 回退：`plugin-repl.ts` 热重载不断会话；stdin 每行转为一次 followup，stdout 只输出带 `REPL ` 前缀的 ready、assistant、turn 和 error JSON 记录，工具与思考细节统一在 Web 轨迹查看。
 - 自省与记忆桥：host 方法 `host.memo(action, key?, value?)` 操作 memoPad；`host.self_status()` 看 goal/agents/subagentProviders/memo；`host.prompt_proof()` 验证 `self:evolution` 提示词小节已组装。
 - 工人编排：模型工具 `subagent/send_message/interrupt_agent` 管持久工人；Python 侧一次性派工用 `host.subagent_start(prompt, label?)`，并内置“禁止 create_goal”约束。
 - 目标回路：模型工具 `get_goal/create_goal/update_goal`；`dsh-goal-round-driver` 在 active 时自动投下一轮，`plugin-goal-keeper` 负责重启后重新武装。

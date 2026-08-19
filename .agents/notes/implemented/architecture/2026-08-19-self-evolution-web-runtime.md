@@ -16,7 +16,7 @@ The operator also needs the official generic `dsh web` modes to remain available
 
 The generic `ds` command continues to run official `dsh web` on `127.0.0.1:3080`. The separate `dse` command starts or reuses the `self-evolution` rmux session and exposes this composition on `127.0.0.1:3081`. Repeated `dse` calls reuse the live session. A failed startup prints recent runtime output and removes only the failed `self-evolution` rmux session.
 
-The browser provides two inspection views. The Cordis panel shows and controls the current session's dynamic plugins. Settings → Plugins → Plugin List projects the complete Loader tree as read-only state. The model-visible `cordis_*` tools remain unchanged. `plugin-repl` remains mounted as a terminal fallback.
+The browser provides conversation and trajectory views, while the Cordis panel shows and controls the current session's dynamic plugins. Generic Settings and complete Loader inventory are omitted. The model-visible `cordis_*` tools remain unchanged. `plugin-repl` remains mounted as a terminal fallback.
 
 The browser may initially select a new draft instead of the only durable session. Selecting the existing session once is browser state and does not create another runtime. Hiding New Session or enforcing a single selectable session is outside this transport attachment.
 

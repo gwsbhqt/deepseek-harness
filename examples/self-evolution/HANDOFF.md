@@ -11,7 +11,7 @@
 - 读它屏幕：`rmux capture-pane -p -t self-evolution -S -30`。
 - 它有自己的持久 Python 内核（ipython 工具）、持久工人编排（subagent）、自我修改工具（cordis_*）、
   自驱动目标回路（goal）、自动上下文压缩（compaction）、动态插件持久化（dynpersist）。
-- 它已经给自己造了 5 个 Python 技能（skills/）、一套 memo 记忆、smoke 自检、REPL 渲染层。
+- 它已经给自己造了 5 个 Python 技能（skills/）、一套 memo 记忆、smoke 自检、REPL 机器桥。
 - 当前工作分支为 `self-evolution`；接管时先检查未提交变更和远端状态。
 
 ---
@@ -30,7 +30,7 @@
 | 文件 | 作用 |
 |---|---|
 | `cordis.yml` | **白名单组合**（12 意群），直接包含核心、Web Host 与 Web Client |
-| `plugin-repl.ts` | 终端回退（四类区分 + 折叠渲染）。零会话状态，热重载只换皮 |
+| `plugin-repl.ts` | 自动化回退（stdin 单行输入，stdout 输出 `REPL ` 前缀 JSON 记录）。零会话状态 |
 | `plugin-ipython-daemon.py` | 内核 daemon：具名持久内核、技能装载、snapshot/restore、host 反向桥。主线程=执行器（SIGINT 杀 cell 不杀内核） |
 | `plugin-ipython-kernel.ts` | ctx.ipython Service：daemon 薄客户端、惰性重连、断线自愈拉起、registerHostMethod 注册表 |
 | `plugin-ipython-tool.ts` | ipython 工具（模型面）+ 内核使用提示词 + host.echo 自检 |
@@ -69,10 +69,10 @@ rmux send-keys -t self-evolution Enter            # Enter 单独发
 rmux capture-pane -p -t self-evolution -S -30     # 读屏幕（-S -N 翻历史）
 ```
 - 浏览器首次打开可能停在“新会话”；从侧边栏选择已有的 `deepseek-harness` 会话一次即可，选择会被浏览器保存。
-- Cordis 面板显示当前会话的动态插件；“设置 → 插件 → 插件列表”显示完整 Loader 树。
+- 会话顶部提供“对话 / 轨迹”，轨迹按轮次检查系统提示、用户消息、模型请求和工具调用；Cordis 面板显示并控制当前会话的动态插件。自进化 Web 不挂通用设置页或完整 Loader 插件清单。
 - **长消息必碎**：send-keys 长文会碎行，模型会把碎片误读成多条指令。超过约 200 字 / 含复杂结构的指令，
   **写文件到 examples/self-evolution/ 下，让它用 ipython 读**（goal-objective 文件就是这么传的）。
-- Enter 偶尔丢失：发完看一眼 pane，消息没变成 `你 ›` 前缀渲染就补发 Enter。
+- Enter 偶尔丢失：发完看一眼 pane，没有出现新的 `REPL {"type":"assistant"...}` / `turn` 记录就补发 Enter。
 
 ### 4.2 重启 / 恢复
 ```bash
@@ -145,7 +145,7 @@ Python 内核不死（daemon 独立进程）。目标若在活动中，goal-keep
 
 1. `dse`，确认返回 `http://127.0.0.1:3081`
 2. `fish -lc 'pgrep -fl "cordis/bin.js|plugin-ipython-daemon"'` 确认两进程活着
-3. 打开 Web，确认旧会话、Cordis 面板和插件列表可见
+3. 打开 Web，确认旧会话的“对话 / 轨迹”和 Cordis 面板可见，并且没有通用设置或 Loader 插件清单
 4. `rmux capture-pane -p -t self-evolution -S -10` 看现场
 5. 发一句 `跑 smoke() 汇报红绿灯` 验证端到端
 6. 读 `SELF.md` + `AGENTS.md` + 本文档

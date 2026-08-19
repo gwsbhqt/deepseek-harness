@@ -1,9 +1,0 @@
-第二阶段自我进化：把地基打成资产。
-
-背景：宿主已补两件基础设施——dynpersist（你的动态插件定义现在会落盘 .dynplugins/，宿主重启自动回放）和 auto-compaction（上下文压力过线自动压缩，你可以放心长跑）。你的 Python 内核（execute）是全场最耐活的存储：宿主重启它都不死。
-
-本阶段任务：
-1. 先把 self-1 和 pyb-2 重新 define+run 一次（让 dynpersist 捕获它们），用 cordis_inspect_self 验证后读 .dynplugins/ 目录确认记录存在。
-2. 记忆升级：memoPad 目前进程内易失。用你能用的手段让它跨重启存活（提示：execute 的 Python 内核能读写文件，宿主重启内核不死；可以在 memo 写入时同步落盘，重启回放后从盘恢复）。
-3. 自检仪式：造一个 smoke 自检能力——一条命令跑通 memo/host桥/execute/inspect 四项冒烟并汇报红绿灯。
-4. 每轮结束照旧 memo 记账 + 验证。全部达成后标 complete。

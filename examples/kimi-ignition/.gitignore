@@ -1,7 +1,0 @@
-*.pyc
-.dynplugins
-.ipython
-.memo
-.sessions
-__pycache__
-.repl-backup/

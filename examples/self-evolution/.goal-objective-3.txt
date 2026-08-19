@@ -1,0 +1,12 @@
+第三阶段：自我见证——给你自己写一份"使用者文档"。
+
+你刚经历两个阶段的自我进化，造了 memoPad、self bridge、prompt 小节、smoke 自检，活过了真实重启。现在把你自己的运行时写清楚，让明早来读的人（和你重启后的自己）一眼看懂：
+
+用 execute 的 Python 内核写文件 examples/self-evolution/SELF.md（中文），内容大纲：
+1. 你是谁：运行在什么宿主上、由哪些意群组成（读 examples/self-evolution/cordis.yml 确认真实组成，不要凭记忆）。
+2. 你的能力清单：每个能力一句话 + 调用方式（工具名/host 方法/内核变量）。
+3. 你的持久化地图：什么活过重启（会话日志、dynplugins 回放、memo.json、Python 内核），什么活不过。
+4. 你的自检方式：smoke() 怎么用、四项红绿灯各是什么。
+5. 你踩过的坑：至少三条（真实发生过的），每条一句教训。
+
+要求：写完后用 execute 读回文件验证内容完整（行数、标题齐全），用 memo 记一条 phase3 日志，然后 update_goal 标 complete。

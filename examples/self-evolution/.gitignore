@@ -1,0 +1,9 @@
+*.pyc
+.dynplugins
+.ipython
+.memo/*
+!.memo/smoke.execute
+!.memo/smoke.py
+.sessions
+__pycache__
+.repl-backup/

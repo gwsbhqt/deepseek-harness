@@ -6,8 +6,8 @@
 
 ## 0. 一分钟版
 
-- 实例跑在 **rmux 会话 `self-evolution`**（宿主 macOS，cwd=`examples/self-evolution`）。
-- 跟它说话：`rmux send-keys -t self-evolution -l '中文消息'` + 单独发 `Enter`。
+- 运行 `dse` 启动或复用 **rmux 会话 `self-evolution`**，浏览器入口是 `http://127.0.0.1:3081`；通用 `ds`/3080 保持独立。
+- Web 与终端回退访问同一个 `self-evolution-main`；终端发消息用 `rmux send-keys -t self-evolution -l '中文消息'` + 单独发 `Enter`。
 - 读它屏幕：`rmux capture-pane -p -t self-evolution -S -30`。
 - 它有自己的持久 Python 内核（ipython 工具）、持久工人编排（subagent）、自我修改工具（cordis_*）、
   自驱动目标回路（goal）、自动上下文压缩（compaction）、动态插件持久化（dynpersist）。
@@ -29,8 +29,8 @@
 
 | 文件 | 作用 |
 |---|---|
-| `cordis.yml` | **白名单组合**（10 意群），系统的"基因组"。改它=热更新（小步安全） |
-| `plugin-repl.ts` | 终端接入（四类区分 + 折叠渲染）。零会话状态，热重载只换皮 |
+| `cordis.yml` | **白名单组合**（12 意群），直接包含核心、Web Host 与 Web Client |
+| `plugin-repl.ts` | 终端回退（四类区分 + 折叠渲染）。零会话状态，热重载只换皮 |
 | `plugin-ipython-daemon.py` | 内核 daemon：具名持久内核、技能装载、snapshot/restore、host 反向桥。主线程=执行器（SIGINT 杀 cell 不杀内核） |
 | `plugin-ipython-kernel.ts` | ctx.ipython Service：daemon 薄客户端、惰性重连、断线自愈拉起、registerHostMethod 注册表 |
 | `plugin-ipython-tool.ts` | ipython 工具（模型面）+ 内核使用提示词 + host.echo 自检 |
@@ -54,27 +54,35 @@
 7. IPython：plugin-ipython-kernel + plugin-ipython-tool + plugin-ipython-bridge-subagent
 8. 自驱动：dsh-goal（defaultMaxGoalRounds: 64）+ dsh-tool-goal + dsh-goal-round-driver + plugin-goal-keeper
 9. 上下文代谢：token-meter + compaction-basic（thresholdRatio 0.75 自动压缩，实测 212K→26K）
-10. 入口：plugin-repl
+10. 终端回退：plugin-repl
+11. Web Host：Typert/API/存储/工作区/WebServer/API Proxy/Web App，直接复用已注册的 `self-evolution-main`
+12. Web Client：对话、工具、工作区、Cordis 动态插件面板和只读 Loader 插件清单
 
 ## 4. 操作手册（接管者必读）
 
 ### 4.1 遥控手势
 ```bash
+dse                                                # 启动或复用自进化 Web
+open http://127.0.0.1:3081                         # 浏览器访问同一个活动 Agent
 rmux send-keys -t self-evolution -l '消息文本'   # 中文必须 -l
 rmux send-keys -t self-evolution Enter            # Enter 单独发
 rmux capture-pane -p -t self-evolution -S -30     # 读屏幕（-S -N 翻历史）
 ```
+- 浏览器首次打开可能停在“新会话”；从侧边栏选择已有的 `deepseek-harness` 会话一次即可，选择会被浏览器保存。
+- Cordis 面板显示当前会话的动态插件；“设置 → 插件 → 插件列表”显示完整 Loader 树。
 - **长消息必碎**：send-keys 长文会碎行，模型会把碎片误读成多条指令。超过约 200 字 / 含复杂结构的指令，
   **写文件到 examples/self-evolution/ 下，让它用 ipython 读**（goal-objective 文件就是这么传的）。
 - Enter 偶尔丢失：发完看一眼 pane，消息没变成 `你 ›` 前缀渲染就补发 Enter。
 
 ### 4.2 重启 / 恢复
 ```bash
-# 在 rmux 会话里 Ctrl-C 后：
-fish -lc 'node --import tsx ../../vendor/cordis/bin.js'
+rmux kill-session -t self-evolution
+dse
 ```
 重启后自动复活：会话日志（含目标）→ dynpersist 回放动态插件 → memo 从 .memo/memo.json 恢复 →
 Python 内核不死（daemon 独立进程）。目标若在活动中，goal-keeper 2 秒后自动补防续跑。
+
+干净检出首次启动若提示 Web 前端或 `lib/client.js` 不存在，先在仓库根目录执行 `pnpm run build`。
 
 ### 4.3 验证纪律（防编造，重要！）
 **不要把模型的口头声明当作执行证据；数会话日志的 tool/call 事件**：
@@ -90,6 +98,7 @@ Python 内核不死（daemon 独立进程）。目标若在活动中，goal-keep
 | execute 超时/连接中断 | daemon 死了——Service 下次 exec 自动拉起（stale socket 自愈已内建） |
 | 动态插件不见了 | dynpersist 会自动回放（日志搜 `[dynpersist]`）；记录全在 .dynplugins/ |
 | 目标停了 | goal 的 activation 是进程内状态；重启后 goal-keeper 补防；手动让 Agent 调用 update_goal resume |
+| `dse` 30 秒内未就绪 | 查看命令打印的最近日志；缺 Web/client 产物时先运行 `pnpm run build`，再执行 `dse` |
 | 条目改名/大重组热更新失败 | cordis 事务回滚可能留僵尸，直接重启进程（组合是声明式的，重启即正确状态） |
 
 ## 5. 架构决策与为什么这么设计
@@ -126,7 +135,7 @@ Python 内核不死（daemon 独立进程）。目标若在活动中，goal-keep
 
 ## 8. 路线图（剩余）
 
-- **IM / Web 接入**（飞书/浏览器接入面进场，plugin-repl 退役）——下一步大件
+- **IM 接入**：飞书接入面进场；Web 已直接挂到活动自进化运行时，plugin-repl 暂作终端回退
 - **技能系统深化**：技能多起来后考虑 pa 式提示词广告位（当前 list_skills() 够用）
 - **多项目多会话**：subagent 工人已是持久会话；rlm 式 fan_out/observe 组合层可以写成 Python 技能
   （subagent.spawn 循环派发 + send 收割）
@@ -134,8 +143,10 @@ Python 内核不死（daemon 独立进程）。目标若在活动中，goal-keep
 
 ## 9. 交接 checklist（接手 Agent 先做这些）
 
-1. `fish -lc 'pgrep -fl "cordis/bin.js|plugin-ipython-daemon"'` 确认两进程活着
-2. `rmux capture-pane -p -t self-evolution -S -10` 看现场
-3. 发一句 `跑 smoke() 汇报红绿灯` 验证端到端
-4. 读 `SELF.md` + `AGENTS.md` + 本文档
-5. 数一次 tool/call 建立基线：`jq -c 'select(.type=="tool/call")' .sessions/*/self-evolution-main/session.jsonl | wc -l`
+1. `dse`，确认返回 `http://127.0.0.1:3081`
+2. `fish -lc 'pgrep -fl "cordis/bin.js|plugin-ipython-daemon"'` 确认两进程活着
+3. 打开 Web，确认旧会话、Cordis 面板和插件列表可见
+4. `rmux capture-pane -p -t self-evolution -S -10` 看现场
+5. 发一句 `跑 smoke() 汇报红绿灯` 验证端到端
+6. 读 `SELF.md` + `AGENTS.md` + 本文档
+7. 数一次 tool/call 建立基线：`jq -c 'select(.type=="tool/call")' .sessions/*/self-evolution-main/session.jsonl | wc -l`

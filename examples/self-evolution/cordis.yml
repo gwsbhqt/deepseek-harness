@@ -179,10 +179,107 @@
     maxTokens: 8192
     compactionRetries: 1
 
-# ── 意群 10 · 入口（终端接入，过渡件）─────────────────────────────
+# ── 意群 10 · 入口（终端回退）───────────────────────────────────
 # plugin-repl：纯"嘴皮"——stdin 行 → agent.followup；session/event → stdout。
-# 零会话状态，热重载它只换皮。等 IM/Web 接入面进场后此件退役。
+# 零会话状态，热重载它只换皮；Web 入口验证稳定前保留为同进程回退。
 - id: plugin-repl
   name: ./plugin-repl.ts
   config:
     sessionId: self-evolution-main
+
+# ── 意群 11 · Web Host（接到同一个活动 Agent）────────────────────
+# api-proxy 优先复用 ctx.agents 里的 self-evolution-main；不挂 preset roster，
+# 因而浏览器与 REPL 驱动同一个 Agent、会话、IPython 内核和动态插件运行时。
+- id: dsh-typert-registry
+  name: '@deepseek-ai/dsh-typert-registry'
+- id: dsh-typert-loader
+  name: '@deepseek-ai/dsh-typert-loader'
+- id: dsh-api-gateway
+  name: '@deepseek-ai/dsh-api-gateway'
+- id: dsh-user-questions
+  name: '@deepseek-ai/dsh-user-questions'
+- id: dsh-agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: kimi-coding
+    model: k3-256k
+- id: dsh-attachment-local
+  name: '@deepseek-ai/dsh-attachment-local'
+  config:
+    dshHome: ./.storages
+- id: dsh-session-query-sqlite
+  name: '@deepseek-ai/dsh-session-query-sqlite'
+  config:
+    path: ':memory:'
+    openAt: never
+- id: dsh-storage
+  name: '@deepseek-ai/dsh-storage'
+- id: dsh-storage-json
+  name: '@deepseek-ai/dsh-storage-json'
+  config:
+    root: ./.storages
+- id: dsh-storage-domain
+  name: '@deepseek-ai/dsh-storage-domain'
+  config:
+    backend: json
+- id: dsh-workspace
+  name: '@deepseek-ai/dsh-workspace'
+- id: dsh-host-webserver
+  name: '@deepseek-ai/dsh-host-webserver'
+  config:
+    host: 127.0.0.1
+    port: !!js Number(process.env.SELF_EVOLUTION_WEB_PORT ?? 3081)
+- id: dsh-host-directory-picker-auto
+  name: '@deepseek-ai/dsh-host-directory-picker-auto'
+- id: dsh-host-plugin-inventory
+  name: '@deepseek-ai/dsh-host-plugin-inventory'
+- id: dsh-host-apiproxy
+  name: '@deepseek-ai/dsh-host-apiproxy'
+- id: dsh-web-app
+  name: '@deepseek-ai/dsh-web-app'
+  config:
+    printUrl: true
+    surfaceContext: false
+    trustedHosts: []
+
+# ── 意群 12 · Web Client（聊天 + 两类 inspect）────────────────────
+# ui-cordis 管动态插件的定义与运行；settings-plugin-inventory 投影完整 Loader 树。
+# 两者只增加浏览器呈现，不改变模型已经持有的 cordis_* 工具。
+- id: dsh-client-modules
+  name: '@deepseek-ai/dsh-client-modules'
+- id: dsh-client-connection
+  name: '@deepseek-ai/dsh-client-connection'
+  config:
+    trustedHosts: []
+- id: dsh-api-remotes
+  name: '@deepseek-ai/dsh-api-remotes'
+- id: dsh-client-runtime
+  name: '@deepseek-ai/dsh-client-runtime'
+- id: dsh-cordis-client-runner
+  name: '@deepseek-ai/dsh-cordis-client-runner'
+- id: dsh-client-ui-settings
+  name: '@deepseek-ai/dsh-client-ui-settings'
+- id: dsh-client-locale
+  name: '@deepseek-ai/dsh-client-locale'
+- id: dsh-client-ui-theme
+  name: '@deepseek-ai/dsh-client-ui-theme'
+- id: dsh-client-ui-layout
+  name: '@deepseek-ai/dsh-client-ui-layout'
+- id: dsh-client-ui-sidebar
+  name: '@deepseek-ai/dsh-client-ui-sidebar'
+- id: dsh-client-ui-settings-general
+  name: '@deepseek-ai/dsh-client-ui-settings-general'
+- id: dsh-client-ui-settings-plugins
+  name: '@deepseek-ai/dsh-client-ui-settings-plugins'
+- id: dsh-client-ui-settings-plugin-inventory
+  name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
+- id: dsh-client-ui-conversation
+  name: '@deepseek-ai/dsh-client-ui-conversation'
+- id: dsh-client-ui-tool
+  name: '@deepseek-ai/dsh-client-ui-tool'
+- id: dsh-client-ui-workspace
+  name: '@deepseek-ai/dsh-client-ui-workspace'
+- id: dsh-client-ui-input-trigger
+  name: '@deepseek-ai/dsh-client-ui-input-trigger'
+- id: dsh-client-ui-cordis
+  name: '@deepseek-ai/dsh-client-ui-cordis'

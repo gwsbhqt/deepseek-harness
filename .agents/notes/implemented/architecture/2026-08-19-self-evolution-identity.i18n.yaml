@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-19-self-evolution-identity.md
-2026-08-19-self-evolution-identity.md: 09d3a5e69126f02c0fcdd8b064b1635df1970532
-2026-08-19-self-evolution-identity.zh.md: 64504934c95d0fcf4b97f58fa4f32b17f224af9b
+2026-08-19-self-evolution-identity.md: bc4b5fae38a959dbc5f799ff4b351b0778704706
+2026-08-19-self-evolution-identity.zh.md: 8926e3e8e56bcdab0e25ffa1e836217993d803f1

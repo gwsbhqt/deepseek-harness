@@ -19,8 +19,9 @@
 5. ✅ **自进化闭环**：Agent 自主通过 cordis_define→cordis_run 迭代四个版本造出 memoPad（KV 便签），当场验证生效；随后建立 self bridge（host.memo/self_status/prompt_proof）、prule（self:evolution 提示词小节）和 smoke 自检。
 6. ✅ **自驱动回路**（意群 8）：dsh-goal + goal-round-driver 持续投轮 + plugin-goal-keeper 重启补防。两个目标已自主跑到 complete。
 7. ✅ **耐久层**：plugin-dynpersist（动态插件定义落盘 .dynplugins/ + 重启回放，幂等+冲突退休）+ 意群 9 上下文代谢（token-meter + compaction-basic auto，75% 阈值自动压缩，实测 212K→26K）。
-8. ○ **IM / Web 接入**：飞书/浏览器接入面进场，plugin-repl 退役。
-9. ○ **技能系统**：挂 dsh-skill + 本地 provider，之后技能自进化。
+8. ✅ **Web 接入**：Web Host 与 Client 直接挂入当前组合；浏览器、REPL、IPython 和动态插件共用 `self-evolution-main`。
+9. ○ **IM 接入**：飞书接入面进场；Web 稳定期间保留 plugin-repl 作为终端回退。
+10. ○ **技能系统**：挂 dsh-skill + 本地 provider，之后技能自进化。
 
 ## 体系地图（重启存活矩阵）
 
@@ -39,7 +40,8 @@
 - **小步热更新**（改代码/改 config 值）用 hmr；**大重组**（条目 id 变更、整层增减）老实停机重启。
 - **人格与工具面同步**：persona 提到的能力必须在白名单里真实存在。
 - **记忆三件套**：dsh-session（内存事件日志）→ dsh-session-persistence-jsonl（落盘 ./.sessions）→ agent-loop config 里的稳定 sessionId（复活锚点）。
-- **操控手势**：实例跑在 rmux 会话 `self-evolution`；`send-keys -l` 发文本（中文必须 -l）、单独发 Enter、`capture-pane -p` 读输出。
+- **启动分流**：`ds` 保持官方通用 Web（3080）；`dse` 启动或复用 rmux 会话 `self-evolution`，并把当前组合暴露在 3081。
+- **操控手势**：优先打开 `http://127.0.0.1:3081`；终端回退用 `send-keys -l` 发文本（中文必须 -l）、单独发 Enter、`capture-pane -p` 读输出。
 - **effect 纪律**：插件拿外部资源（stdin/进程/定时器）必须 `ctx.effect` 返回卸载器，cordis v4 没有 dispose 事件。
 - **k3 推理重放陷阱**：k3-256k 会把重放历史里自己的 thinking 当行为范本——一旦某轮"想了要调工具但只回了文字"，后续轮次会模仿这个模式持续编造工具结果（看起来信誓旦旦，实际一个 tool_use 都没发）。发现之道：会话日志里数 `tool/call` 事件，别信模型的口头声明。规避：不让编造进历史（任务别太琐碎，琐碎任务它会判定"直接答"而跳过工具）；已污染就换新 sessionId 重开（记忆文件即历史，删之即新生）。
 - **静默 PENDING 判读**：registry 里服务插件名下的 (anon) PENDING fiber 多为可选集成在等服务（如 dsh-session 等 typert），不是错误；先查宿主日志与 `cordis_inspect_list`，再查询对应服务和事件。

@@ -16,7 +16,7 @@ The example is `examples/self-evolution`, its stable root session is `self-evolu
 
 The model route remains ordinary configuration. The current standalone composition still names `kimi-coding` and `k3-256k` where the LLM provider and model are selected, but neither name appears as the Agent's identity. A different provider can replace them without renaming the example, its session, or its operating instructions.
 
-The Web deployment authors `self-evolution` as a user preset rather than adding a shipped preset. The preset carries the same identity and evidence-driven loop while inheriting the shipped creation preset's tool composition. It does not claim the standalone process's in-memory services or live session; those remain separate runtime assemblies.
+The [self-evolution Web runtime](2026-08-19-self-evolution-web-runtime.md) mounts browser transport in the same standalone composition. It reuses the stable Agent and does not duplicate its identity through a shipped or user preset.
 
 ## Alternatives considered
 
@@ -24,10 +24,10 @@ The Web deployment authors `self-evolution` as a user preset rather than adding 
 
 **Remove every Kimi reference.** Rejected because `kimi-coding`, `k3-256k`, and `KIMI_API_KEY` are accurate provider configuration. Hiding them would make the composition harder to operate without making the Agent more model-independent.
 
-**Ship self-evolution as a fifth built-in preset.** Rejected because the experiment includes local runtime plugins and operator-owned state. A user preset can evolve independently without turning one experimental composition into a product default maintained by every installation.
+**Represent the Web runtime as a shipped or user preset.** Rejected because a preset would assemble another Agent instead of exposing the live standalone runtime that owns the experiment's state.
 
 ## Consequences
 
-The identity survives provider changes and describes the behavior users are selecting. Operators have one name across the repository path, root session, rmux session, terminal label, and Web preset. Existing session logs and persisted dynamic-plugin filenames migrate with the stable session id so the accumulated evolution history remains available.
+The identity survives provider changes and describes the behavior users are selecting. Operators have one name across the repository path, root session, rmux session, and terminal and browser entry points. Existing session logs and persisted dynamic-plugin filenames migrate with the stable session id so the accumulated evolution history remains available.
 
-The standalone example and Web preset intentionally do not share live memory. Moving IPython state, dynamic plugins, or an existing session between those processes remains an explicit migration rather than an implication of the shared name. The standalone persistence plugin waits for the matching `agent/created` event before replaying an active dynamic plugin, so composition order does not discard persisted behavior during restart. A failed replay retains its active marker for a later retry instead of converting a temporary runtime or code failure into permanent retirement. Root-level example plugins are part of the host TypeScript program, keeping the runnable composition and its regression tests on the same compiler face.
+The terminal and browser entry points share live IPython state, dynamic plugins, and session history because they address the same Agent in one process. The standalone persistence plugin waits for the matching `agent/created` event before replaying an active dynamic plugin, so composition order does not discard persisted behavior during restart. A failed replay retains its active marker for a later retry instead of converting a temporary runtime or code failure into permanent retirement. Root-level example plugins are part of the host TypeScript program, keeping the runnable composition and its regression tests on the same compiler face.

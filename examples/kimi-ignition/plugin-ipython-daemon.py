@@ -28,16 +28,25 @@ daemon 自身升级靠 snapshot/restore（每变量独立序列化，不可序�
 
 cell 语义（对齐 IPython 手感）：代码按语句编译执行；最后一条语句若是表达式，
 其值的 repr 作为 result 返回并绑定到变量 _。stdout/stderr 全量捕获返回。
-技能机制：内核创建/reset 时自动把技能目录（默认 <socket目录>/skills）下所有
-.py exec 进命名空间；reload_skills() 热加载；失败收 _skill_errors 不杀内核。
+技能机制（对齐 prime-agent 的 python skill 契约）：技能目录（默认 <socket目录>/skills）
+下每个含 SKILL.md + pyproject.toml + src/<import名>/__init__.py 的子目录是一个技能；
+内核创建/reset 时把各技能 src 挂进 sys.path 并 import 进命名空间，带 run() 的模块
+包成可调用（同步 cell 里自动 asyncio.run 等待异步 run）；pyproject dependencies
+缺失时自动 pip --target 装进 <socket目录>/skill-deps；装载失败的名字绑成"不可用桩"
+（调用即报原始错误）并收进 _skill_errors，不杀内核。reload_skills() 热加载
+（已装模块 importlib.reload），list_skills() 返回技能目录。
 单客户端假设：任一时刻只服务一条 socket 连接，重连即接管。
 """
 import base64
+import importlib
+import inspect
 import json
 import os
 import queue
+import re
 import signal
 import socket
+import subprocess
 import sys
 import threading
 import traceback
@@ -52,6 +61,83 @@ except ImportError:
 def _log(logf, msg):
     logf.write(f"[ipython-daemon] {msg}\n")
     logf.flush()
+
+
+def _parse_skill_md(path):
+    """解析 SKILL.md 的 YAML frontmatter（只取 name/description；stdlib 简解析，不引 yaml）。"""
+    meta = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return meta
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        if end > 0:
+            for line in text[3:end].splitlines():
+                if ":" in line and not line.startswith((" ", "#")):
+                    k, _, v = line.partition(":")
+                    meta[k.strip()] = v.strip().strip('"').strip("'")
+    return meta
+
+
+def _validate_skill_md(path, dirname):
+    """prime frontmatter 规则：name 匹配目录名/合法字符集/≤64；description 必填/≤1024。"""
+    meta = _parse_skill_md(path)
+    name = meta.get("name", "")
+    desc = meta.get("description", "")
+    if name != dirname:
+        return f'SKILL.md name "{name}" 与目录名 "{dirname}" 不一致'
+    if len(name) > 64 or not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", name):
+        return f'name "{name}" 非法（小写字母数字+单连字符，≤64）'
+    if not desc:
+        return "SKILL.md 缺 description（prime 契约：缺失即静默不可装载）"
+    if len(desc) > 1024:
+        return "description 超 1024 字符"
+    return None
+
+
+class _CallableSkillModule(types.ModuleType):
+    """带 run() 的技能模块包装：模块本身可调用（同步 cell 里自动等异步 run 完成）。"""
+
+    def __call__(self, *args, **kwargs):
+        result = self.run(*args, **kwargs)
+        if inspect.isawaitable(result):
+            import asyncio
+            return asyncio.run(result)
+        return result
+
+
+def _wrap_callable_module(module):
+    run = getattr(module, "run", None)
+    if not callable(run) or isinstance(module, _CallableSkillModule):
+        return module
+    wrapped = _CallableSkillModule(module.__name__)
+    wrapped.__dict__.update(module.__dict__)
+    try:
+        wrapped.__signature__ = inspect.signature(run)
+    except (TypeError, ValueError):
+        pass
+    doc = getattr(run, "__doc__", None)
+    if doc:
+        wrapped.__doc__ = doc
+    sys.modules[module.__name__] = wrapped
+    return wrapped
+
+
+class _UnavailableSkill:
+    """装载失败的占位桩：调用即抛出原始导入错误（对齐 prime 的不可用技能语义）。"""
+
+    def __init__(self, name, error):
+        self.__name__ = name
+        self._error = error
+        self.__doc__ = f"技能 {name} 不可用: {error}"
+
+    def __call__(self, *args, **kwargs):
+        raise RuntimeError(f"技能 {self.__name__} 不可用（装载失败）: {self._error}")
+
+    def __repr__(self):
+        return f"<不可用技能 {self.__name__!r}: {self._error}>"
 
 
 class _HostProxy:
@@ -79,25 +165,6 @@ class _Kernel:
         self.namespace["host"] = _HostProxy(self)
         self.namespace["reload_skills"] = self.load_skills
         self.load_skills()
-
-    def load_skills(self):
-        """把技能目录里所有 .py 依次 exec 进命名空间（定义即工具）。
-        失败的技能不杀内核，错误收进 _skill_errors 字典供检视。"""
-        errors = {}
-        skills_dir = self.server.skills_dir
-        if os.path.isdir(skills_dir):
-            for fname in sorted(os.listdir(skills_dir)):
-                if not fname.endswith(".py"):
-                    continue
-                path = os.path.join(skills_dir, fname)
-                try:
-                    with open(path, encoding="utf-8") as f:
-                        code = f.read()
-                    exec(compile(code, path, "exec"), self.namespace)
-                except BaseException:
-                    errors[fname] = traceback.format_exc().strip().splitlines()[-1]
-        self.namespace["_skill_errors"] = errors
-        return dict(errors)
 
     def exec_cell(self, code):
         """执行一个 cell。cell 末尾的孤立表达式的值 = result（并绑定 _）。
@@ -127,6 +194,54 @@ class _Kernel:
                 tb = traceback.format_exc()
                 error = {"type": "Error", "message": tb.strip().splitlines()[-1], "traceback": tb}
         return {"stdout": out.getvalue(), "stderr": err.getvalue(), "result": result_repr, "error": error}
+
+    def load_skills(self):
+        """按 prime 契约装载技能目录；返回 {技能名: 错误}（空字典=全绿）。
+        装载产物：命名空间里的技能模块、list_skills()、_skill_catalog、_skill_errors。"""
+        errors = {}
+        catalog = []
+        skills_dir = self.server.skills_dir
+        if os.path.isdir(skills_dir):
+            for entry in sorted(os.listdir(skills_dir)):
+                sdir = os.path.join(skills_dir, entry)
+                skill_md = os.path.join(sdir, "SKILL.md")
+                pyproject = os.path.join(sdir, "pyproject.toml")
+                if not os.path.isdir(sdir) or not (os.path.isfile(skill_md) and os.path.isfile(pyproject)):
+                    continue  # 非技能目录（或纯 markdown 技能无 python 半），跳过
+                meta_err = _validate_skill_md(skill_md, entry)
+                if meta_err:
+                    errors[entry] = meta_err
+                    continue
+                import_name = entry.replace("-", "_")
+                if not import_name.isidentifier():
+                    errors[entry] = f'import 名 "{import_name}" 不是合法 Python 标识符'
+                    continue
+                if not os.path.isfile(os.path.join(sdir, "src", import_name, "__init__.py")):
+                    errors[entry] = f"src/{import_name}/__init__.py 不存在（src 布局是硬契约）"
+                    continue
+                dep_err = self.server.ensure_skill_deps(pyproject)
+                if dep_err:
+                    errors[entry] = dep_err
+                    continue
+                src_dir = os.path.join(sdir, "src")
+                if src_dir not in sys.path:
+                    sys.path.insert(0, src_dir)
+                try:
+                    if import_name in sys.modules:
+                        module = importlib.reload(sys.modules[import_name])
+                    else:
+                        module = importlib.import_module(import_name)
+                    self.namespace[import_name] = _wrap_callable_module(module)
+                    meta = _parse_skill_md(skill_md)
+                    catalog.append({"name": entry, "description": meta.get("description", ""), "import_name": import_name})
+                except BaseException:
+                    err = traceback.format_exc().strip().splitlines()[-1]
+                    self.namespace[import_name] = _UnavailableSkill(import_name, err)
+                    errors[entry] = err
+        self.namespace["_skill_errors"] = errors
+        self.namespace["_skill_catalog"] = catalog
+        self.namespace["list_skills"] = lambda: list(catalog)
+        return dict(errors)
 
     def reset(self):
         self.namespace.clear()
@@ -180,6 +295,55 @@ class _Server:
         self.srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.srv.bind(sock_path)
         self.srv.listen(1)
+
+
+    # PyPI 名 → import 名 的常见映射（对齐 prime 文档里的常用包）；查不到用原名
+    _DEP_IMPORT_NAMES = {
+        "beautifulsoup4": "bs4", "pyyaml": "yaml", "python-dotenv": "dotenv",
+        "pillow": "PIL", "scikit-learn": "sklearn", "opencv-python": "cv2",
+    }
+
+    def ensure_skill_deps(self, pyproject_path):
+        """按 pyproject dependencies 保证依赖可用：先试 import，缺失则
+        pip --target 装进 <socket目录>/skill-deps（隔离目录，不污染 daemon 解释器）。
+        全部就绪返回 None，否则返回错误描述。prime-agent-runtime 在 dsh 无对应物，
+        声明它的技能直接报可用性错误（host 桥是这里的等价物）。"""
+        try:
+            import tomllib
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+        except Exception as exc:
+            return f"pyproject.toml 解析失败: {exc}"
+        deps = data.get("project", {}).get("dependencies", []) or []
+        if not deps:
+            return None
+        deps_dir = os.path.join(os.path.dirname(self.sock_path), "skill-deps")
+        for dep in deps:
+            name = re.split(r"[<>=!~\[; ]", dep, 1)[0].strip()
+            if not name:
+                continue
+            if name == "prime-agent-runtime":
+                return "声明了 prime-agent-runtime：dsh 运行时无此物（host 桥是等价物），请移除该依赖"
+            import_name = self._DEP_IMPORT_NAMES.get(name.lower(), name.replace("-", "_"))
+            try:
+                importlib.import_module(import_name)
+                continue  # 已可用
+            except ImportError:
+                pass
+            os.makedirs(deps_dir, exist_ok=True)
+            if deps_dir not in sys.path:
+                sys.path.insert(0, deps_dir)
+            proc = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--quiet", "--target", deps_dir, dep],
+                capture_output=True, text=True, timeout=300,
+            )
+            if proc.returncode != 0:
+                return f"依赖 {dep} 安装失败: {(proc.stderr or proc.stdout).strip()[-200:]}"
+            try:
+                importlib.import_module(import_name)
+            except ImportError as exc:
+                return f"依赖 {dep} 装完仍不可 import: {exc}"
+        return None
 
     def kernel(self, name):
         if name not in self.kernels:

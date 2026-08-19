@@ -1,5 +1,6 @@
-# 运行时产物：会话记忆与内核 daemon 状态不进版本库
-.sessions/
-.ipython/
-.dynplugins/
-.memo/memo.json
+*.pyc
+.dynplugins
+.ipython
+.memo
+.sessions
+__pycache__

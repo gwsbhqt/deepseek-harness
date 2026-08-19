@@ -31,3 +31,13 @@ def list():
 def send(id, message):
     """给工人续话：`host.subagent_send(id, message)`。"""
     return _host().subagent_send(id, message)
+
+
+def interrupt(id):
+    """打断在跑的工人：`host.subagent_interrupt(id)`。"""
+    return _host().subagent_interrupt(id)
+
+
+def report(text):
+    """工人体内上行汇报：`host.subagent_report(text)`；亲代内核一般不调。"""
+    return _host().subagent_report(text)

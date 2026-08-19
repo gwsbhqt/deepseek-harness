@@ -17,6 +17,8 @@ const BRIDGE_PROMPT = `内核 host 桥的编排原语（由 plugin-ipython-bridg
 - host.subagent_spawn(description, prompt)：派一个持久工人（continuable，返回工人 id）
 - host.subagent_list()：列出你的工人（id/activity/mode）
 - host.subagent_send(id, message)：给工人续话派活
+- host.subagent_interrupt(id)：打断在跑的工人（亲代权限）
+- host.subagent_report(text)：（工人体内）上行汇报给亲代
 编排由此可写成代码：循环/条件批量派工、fan-out 收割，而不是逐个工具调用。`
 
 export function apply(ctx: Context): void {
@@ -52,6 +54,21 @@ export function apply(ctx: Context): void {
         const parent = callerAgent(kernel)
         const children = await ctx.subagents.listChildren(parent.id)
         return children.map((c) => (c.kind === 'child' ? { id: c.id, activity: c.activity, mode: c.mode } : { id: c.id }))
+      }),
+      ctx.ipython.registerHostMethod('subagent_interrupt', async (args, kernel) => {
+        // 对应模型面 interrupt_agent：亲代打断在跑的工人（authority=亲代 agent 本人）
+        const parent = callerAgent(kernel)
+        ctx.subagents.interrupt(String(args[0]) as SessionId, { kind: 'ancestor', agent: parent })
+        return true
+      }),
+      ctx.ipython.registerHostMethod('subagent_report', async (args, kernel) => {
+        // 对应模型面 report：工人从自己的内核上行汇报给亲代（child=调用方 agent 本人）
+        const child = callerAgent(kernel)
+        return await ctx.subagents.reportFrom(
+          child,
+          [{ type: 'text', text: String(args[0] ?? '') }],
+          { delivery: 'wakeup', signal: new AbortController().signal },
+        )
       }),
       ctx.ipython.registerHostMethod('subagent_send', async (args, kernel) => {
         const parent = callerAgent(kernel)

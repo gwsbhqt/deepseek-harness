@@ -10,3 +10,5 @@ description: 在 execute 内核里编排持久工人 agent 时用：把 host.sub
 - `subagent.spawn(description, prompt)` → `host.subagent_spawn(...)`
 - `subagent.list()` → `host.subagent_list()`
 - `subagent.send(id, message)` → `host.subagent_send(id, message)`
+- `subagent.interrupt(id)` → `host.subagent_interrupt(id)`
+- `subagent.report(text)` → `host.subagent_report(text)`（工人侧上行汇报）

@@ -4,4 +4,4 @@ description: 需要快速确认 Kimi ignition 当前运行时是否健康时使�
 ---
 # self-snapshot
 
-调用：`self_snapshot()` 或技能入口 `run()`。依赖 execute 内核里的 host 反向桥与本地 .dynplugins/.memo 文件。
+调用：`self_snapshot()` 或技能入口 `run()`。依赖 ipython 内核里的 host 反向桥与本地 .dynplugins/.memo 文件。

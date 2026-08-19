@@ -5,7 +5,7 @@ description: 仓库 git 常用操作的结构化封装：status/diff_summary/add
 
 # git-tools
 
-在 execute 内核里复用的 git 助手。默认仓库根写死为 deepseek-harness；所有动作返回结构化 dict，不抛异常（除参数错误）。
+在 ipython 内核里复用的 git 助手。默认仓库根写死为 deepseek-harness；所有动作返回结构化 dict，不抛异常（除参数错误）。
 
 - `git_tools.status()`：`git status -sb`
 - `git_tools.diff_summary(paths=None)`：`git diff --stat -- [paths]`

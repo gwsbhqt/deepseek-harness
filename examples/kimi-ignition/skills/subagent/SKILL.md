@@ -1,6 +1,6 @@
 ---
 name: subagent
-description: 在 execute 内核里编排持久工人 agent 时用：把 host.subagent_spawn/list/send 藏进 subagent.spawn/list/send，让 cell 只写 subagent.spawn(...) 这类统一表达，不碰 host.* 细节。
+description: 在 ipython 内核里编排持久工人 agent 时用：把 host.subagent_spawn/list/send 藏进 subagent.spawn/list/send，让 cell 只写 subagent.spawn(...) 这类统一表达，不碰 host.* 细节。
 ---
 
 # subagent

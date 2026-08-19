@@ -2,7 +2,7 @@
  * plugin-ipython-tool —— 把持久 Python 内核递给模型：注册 `execute` 工具（agent 的"手"）。
  *
  * 内核本体在 plugin-ipython-daemon.py 独立进程（见 plugin-ipython-kernel.ts 的架构说明），
- * 本插件只做两件事：往 systemPrompt 挂一段内核使用说明 + 注册 execute 工具。
+ * 本插件只做两件事：往 systemPrompt 挂一段内核使用说明 + 注册 ipython 工具。
  * 热重载本插件只换工具注册与提示词，内核与变量不动。
  *
  * 多租户：默认内核 key = 调用方 agent 的 sessionId——主 agent 与每个 subagent 工人
@@ -15,7 +15,7 @@ export const name = 'plugin-ipython-tool'
 export const inject = ['tools', 'systemPrompt', 'ipython']
 
 /** 模型可见的内核使用说明（systemPrompt section）。 */
-const IPYTHON_PROMPT = `你可以用 execute 工具在一个持久 Python 内核里运行代码（你的"手"）：
+const IPYTHON_PROMPT = `你可以用 ipython 工具在一个持久 Python 内核里运行代码（你的"手"）：
 - 内核是持久的：变量、import、函数定义在多次调用之间一直存活，把工作拆成多步增量推进。
 - 每个会话一个独立内核：你的内核与工人 agent 的内核互不可见。
 - cell 语义：最后一个孤立表达式的值会作为 result 返回（等价 IPython 的 Out）；stdout/stderr 全量回传。
@@ -41,7 +41,7 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.ipython.registerHostMethod('echo', (args) => args[0] ?? null), 'ipython-tool: host echo')
 
   ctx.effect(() => ctx.tools.register(defineTool({
-    name: 'execute',
+    name: 'ipython',
     description: '在持久 Python 内核里执行一段代码。变量/import/定义跨调用常驻；最后一条孤立表达式的值作为 result 返回；异常以 error 字段返回（内核与状态仍在）；超时/中断杀 cell 不杀内核。',
     parameters: {
       code: {

@@ -33,6 +33,12 @@ interface DynRecord {
 
 const DIR = './.dynplugins'
 /** cordis_define 回执文本里的身份提取（见模块 docstring 的解析约定）。 */
+/** idPrefix 合法化：cordis_define 只收 3-6 个小写字母；从 pluginId 剥 -N 后缀并净化。 */
+function safeIdPrefix(raw: string): string {
+  const cleaned = raw.replace(/-\d+$/, '').replace(/[^a-z]/g, '').slice(0, 6)
+  return cleaned.length >= 3 ? cleaned : (cleaned + 'rep').slice(0, 6).padEnd(3, 'x')
+}
+
 const DEFINED_RE = /Defined (\S+)\/(\S+)/
 
 function recordPath(sessionId: string, pluginId: string): string {
@@ -112,7 +118,7 @@ export function apply(ctx: Context): void {
           const file = fileFor(sessionId, pluginId)
           const rec: DynRecord = existsSync(file)
             ? load(file)
-            : { pluginId, idPrefix: pluginId, purpose: String(args.purpose ?? ''), sessionId, packages: [], activePackage: null }
+            : { pluginId, idPrefix: safeIdPrefix(pluginId), purpose: String(args.purpose ?? ''), sessionId, packages: [], activePackage: null }
           rec.packages.push({ packageId, label: String(args.name ?? ''), code: args.code })
           save(file, rec)
         }
@@ -142,7 +148,7 @@ export function apply(ctx: Context): void {
     try {
       const rec: DynRecord = load(file)
       if (rec.activePackage === null) {
-        ctx.logger.info(`dynpersist: ${f} 已停止，跳过`)
+        console.log(`[dynpersist] ${f} 已停止，跳过`)
         continue
       }
       const pkg = rec.packages.find((p) => p.packageId === rec.activePackage) ?? rec.packages.at(-1)!
@@ -156,7 +162,7 @@ export function apply(ctx: Context): void {
       const existing = runner.snapshot(agent) as any[]
       const already = existing.some((p) => p.pluginId === rec.pluginId)
       if (already) {
-        ctx.logger.info(`dynpersist: ${rec.pluginId} 已在运行时，跳过回放`)
+        console.log(`[dynpersist] ${rec.pluginId} 已在运行时，跳过回放`)
         continue
       }
       const receipt = runner.define({
@@ -175,9 +181,10 @@ export function apply(ctx: Context): void {
         packages: [{ packageId: receipt.packageId, label: receipt.name, code: pkg.code }],
         activePackage: receipt.packageId,
       })
-      ctx.logger.info(`dynpersist: 回放动态插件 ${receipt.pluginId}/${receipt.name}`)
+      console.log(`[dynpersist] 回放动态插件 ${receipt.pluginId}/${receipt.name}`)
     } catch (e) {
-      ctx.logger.warn(`dynpersist: 回放 ${f} 失败: ${(e as Error).message}`)
+      // console.log 而不是 logger.warn：本组合下 warn 不显示（已踩过），失败必须看得见
+      console.log(`[dynpersist] 回放 ${f} 失败: ${(e as Error).message}`)
       // 回放失败的记录退休（activePackage=null）：多半是运行时已有等价物
       // （agent 自愈重建的兄弟），留着只会让每次重启都撞同一个冲突。
       try {

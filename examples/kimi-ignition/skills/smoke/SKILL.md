@@ -1,6 +1,6 @@
 ---
 name: smoke
-description: 睡前/重启后/改完自进化能力后跑一条自检时使用；检查 memo、host 桥、execute 内核、.dynplugins 记录四项并返回红绿灯 dict。
+description: 睡前/重启后/改完自进化能力后跑一条自检时使用；检查 memo、host 桥、ipython 内核、.dynplugins 记录四项并返回红绿灯 dict。
 ---
 # smoke
 

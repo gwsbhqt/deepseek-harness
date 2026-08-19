@@ -102,6 +102,10 @@
 # 三个 tool-* 是 Consumer，模型可见工具共 5 个：subagent（派生）、
 #   list_agents/send_message/interrupt_agent（管控）、report（工人上行汇报）。
 # 工人是持久可续会话（durable id），不是一次性任务；delegationDepth 允许工人再裂变。
+# dsh-session-projection：会话投影注册表——listChildren 等编排查询的依赖
+# （缺它 host.subagent_list 会 fail loud，k3 的动态桥早就踩过这个坑）。
+- id: dsh-session-projection
+  name: '@deepseek-ai/dsh-session-projection'
 - id: dsh-subagent
   name: '@deepseek-ai/dsh-subagent'
 - id: dsh-subagent-spawn-in-process
@@ -134,6 +138,10 @@
   name: ./plugin-ipython-kernel.ts
 - id: plugin-ipython-tool
   name: ./plugin-ipython-tool.ts
+# plugin-ipython-bridge-subagent：subagent 编排桥（host.subagent_*）。
+# 一方即三方：与 k3 动态插件自建的桥走同一个开放注册表，删本条即摘能力。
+- id: plugin-ipython-bridge-subagent
+  name: ./plugin-ipython-bridge-subagent.ts
 
 # ── 意群 8 · 自驱动（持续目标，不再等喂话）─────────────────────────
 # dsh-goal：目标域服务（ctx.goals，事件溯源状态存进会话日志——目标本身也是记忆）。

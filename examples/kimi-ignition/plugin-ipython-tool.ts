@@ -10,11 +10,9 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 export const name = 'plugin-ipython-tool'
-export const inject = ['tools', 'systemPrompt', 'ipython', 'subagents', 'agents']
+export const inject = ['tools', 'systemPrompt', 'ipython']
 
 /** 模型可见的内核使用说明（systemPrompt section）。 */
 const IPYTHON_PROMPT = `你可以用 execute 工具在一个持久 Python 内核里运行代码（你的"手"）：
@@ -32,59 +30,15 @@ const IPYTHON_PROMPT = `你可以用 execute 工具在一个持久 Python 内核
     skills/<名字>/src/<import名>/__init__.py   import名 = 目录名连字符转下划线；定义 run() 则模块可调用（docstring 即文档）
   写完 reload_skills() 热加载（返回 {} 即全绿，否则看 _skill_errors），list_skills() 看技能目录。
   纪律：一个技能一个用途、run() 带完整 docstring 和类型签名、写完当场调用验证、记进 memo。
-- 内核里的 host 对象能反向调用宿主能力（host.<方法>(*args)）：
-  host.subagent_spawn(description, prompt) 派一个持久工人（返回工人 id）；
-  host.subagent_list() 列你的工人；host.subagent_send(id, message) 给工人续话派活。
-  这意味着你可以在内核里用循环/条件批量编排工人，把编排写成代码而不是逐个工具调用。`
+- 内核里的 host 对象能反向调用宿主能力（host.<方法>(*args)）；具体能力由各桥插件提供
+  （如 subagent 编排桥，见对应提示词小节），host.echo(x) 是桥本身的自检。`
 
 export function apply(ctx: Context): void {
   ctx.systemPrompt.section({ name: 'tool:execute', order: 120, text: IPYTHON_PROMPT })
 
-  // host 反向桥：echo 回环自检 + subagent 编排三件套。
-  // 四个注册收进一个原子 effect：热重载 dispose 时整体摘除，避免半截泄漏
-  // （registerHostMethod 对重名 fail-loud，泄漏会让下次 apply 永远撞重复）。
-  // 调用方鉴权：内核名约定 = agent 的 sessionId；无名内核（unknown/shared）拒绝服务。
-  const callerAgent = (kernel: string): Agent => {
-    const agent = ctx.agents.get(kernel as SessionId)
-    if (!agent) throw new Error(`内核 "${kernel}" 不对应任何存活 agent，编排能力拒绝服务`)
-    return agent
-  }
-  ctx.effect(() => {
-    const disposers = [
-      ctx.ipython.registerHostMethod('echo', (args) => args[0] ?? null),
-      ctx.ipython.registerHostMethod('subagent_spawn', async (args, kernel) => {
-        const parent = callerAgent(kernel)
-        const label = String(args[0] ?? 'kernel-spawned worker')
-        const started = await ctx.subagents.startContinuable({
-          provider: 'spawn',
-          label,
-          request: {
-            label,
-            prompt: [{ type: 'text', text: String(args[1] ?? '') }],
-            parent,
-            agentOptions: { provider: 'kimi-coding', model: 'k3-256k' },
-          },
-          signal: new AbortController().signal,
-        })
-        return started.childId
-      }),
-      ctx.ipython.registerHostMethod('subagent_list', async (_args, kernel) => {
-        const parent = callerAgent(kernel)
-        const children = await ctx.subagents.listChildren(parent.id)
-        return children.map((c) => (c.kind === 'child' ? { id: c.id, activity: c.activity, mode: c.mode } : { id: c.id }))
-      }),
-      ctx.ipython.registerHostMethod('subagent_send', async (args, kernel) => {
-        const parent = callerAgent(kernel)
-        return await ctx.subagents.followup(
-          parent,
-          String(args[0]) as SessionId,
-          [{ type: 'text', text: String(args[1] ?? '') }],
-          { source: { kind: 'user' }, signal: new AbortController().signal },
-        )
-      }),
-    ]
-    return () => { for (const d of disposers) d() }
-  }, 'ipython-tool: host bridge')
+  // host 反向桥的回环自检端点：内核里 host.echo(x) 应原样返回 x——桥机制本身的健康探针。
+  // 具体桥能力（subagent 编排等）由各自的桥插件提供，本插件不持有——一方即三方。
+  ctx.effect(() => ctx.ipython.registerHostMethod('echo', (args) => args[0] ?? null), 'ipython-tool: host echo')
 
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'execute',

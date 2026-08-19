@@ -140,10 +140,10 @@ export function apply(ctx: Context, config: Config) {
         if (source.kind === 'tool') return
         closeAssistant()
         if (source.kind === 'user') {
-          write(`${userLabel()} ${paint('cyan', messageText(event.data))}\n`)
+          write(`\n${userLabel()} ${paint('cyan', messageText(event.data))}\n`)
         } else {
           const label = source.kind === 'plugin' ? `系统/${source.plugin}` : `系统/${String(source.kind)}`
-          write(`${paint('gray', `${label} ›`)} ${paint('gray', messageText(event.data))}\n`)
+          write(`\n${paint('gray', `${label} ›`)} ${paint('gray', messageText(event.data))}\n`)
         }
         return
       }

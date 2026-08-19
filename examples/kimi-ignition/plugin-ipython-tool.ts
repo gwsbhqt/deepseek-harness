@@ -23,6 +23,8 @@ const IPYTHON_PROMPT = `你可以用 execute 工具在一个持久 Python 内核
 - cell 语义：最后一个孤立表达式的值会作为 result 返回（等价 IPython 的 Out）；stdout/stderr 全量回传。
 - 报错不是失败：异常以 error 字段返回，修改变量重试即可，内核状态仍在。
 - 长任务会被超时打断：杀的是当前 cell，内核与已有变量存活，换个思路继续。
+- 内核节俭：变量/helper 跨调用常驻——先用 globals() 查已有的再用，禁止每个 cell 重写 import/def 样板；
+  发现两个 cell 写了相似代码，立刻把公共部分晋升成技能（skills/）。cell 应该越写越短。
 - 复杂的活先在内核里小步验证（自验证），确认可行再落到正式动作。
 - 给自己造 Python 工具（技能）：在 skills/ 下建目录，契约对齐 prime-agent python skill：
     skills/<名字>/SKILL.md      frontmatter：name（=目录名，小写字母数字+单连字符≤64）+ description（必填≤1024，写清何时用）
